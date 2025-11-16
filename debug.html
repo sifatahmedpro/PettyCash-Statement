@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expense Category Debug Tool</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #3A358E;
+            padding-bottom: 10px;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: #f9f9f9;
+        }
+        .section h3 {
+            margin-top: 0;
+            color: #3A358E;
+        }
+        pre {
+            background: #f0f0f0;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+            border-left: 4px solid #3A358E;
+        }
+        button {
+            background-color: #3A358E;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px 5px 5px 0;
+        }
+        button:hover {
+            background-color: #2c286e;
+        }
+        .success {
+            color: green;
+            font-weight: bold;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+        .info-box {
+            background: #e7f3ff;
+            padding: 10px;
+            border-left: 4px solid #2196F3;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+        table th, table td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        table th {
+            background-color: #3A358E;
+            color: white;
+        }
+        table tr:hover {
+            background-color: #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Expense Category Debug Tool</h1>
+        
+        <div class="section">
+            <h3>1️⃣ Check Expense List in localStorage</h3>
+            <button onclick="checkExpenseList()">Check expenseList</button>
+            <div id="expenseStatus" style="margin-top: 10px;"></div>
+        </div>
+
+        <div class="section">
+            <h3>2️⃣ Check Manpower Tables (Full Data)</h3>
+            <button onclick="checkManpowerTables()">Check manpowerTables</button>
+            <div id="tablesStatus" style="margin-top: 10px;"></div>
+        </div>
+
+        <div class="section">
+            <h3>3️⃣ Test Expense Code Lookup</h3>
+            <p>Enter an expense code to test if it can be found:</p>
+            <input type="text" id="testCode" placeholder="Enter code (e.g., E001, office-001)" style="padding: 8px; width: 250px; border: 1px solid #ccc; border-radius: 4px;">
+            <button onclick="testFetchManpower()">Test Lookup</button>
+            <div id="testResult" style="margin-top: 10px;"></div>
+        </div>
+
+        <div class="section">
+            <h3>4️⃣ Create Test Expense Data</h3>
+            <p>Create sample expense data to test the system:</p>
+            <button onclick="createSampleExpenseData()">Create Sample Data</button>
+            <div id="sampleResult" style="margin-top: 10px;"></div>
+        </div>
+
+        <div class="section">
+            <h3>5️⃣ Clear Expense Data Only</h3>
+            <p>Remove only expense-related data:</p>
+            <button onclick="clearExpenseData()" style="background-color: #dc3545;">Clear expenseList & manpowerTables</button>
+            <div id="clearResult" style="margin-top: 10px;"></div>
+        </div>
+
+        <div class="section" style="background-color: #fff3cd; border-color: #ffc107;">
+            <h3>📋 Instructions</h3>
+            <ol>
+                <li>Click "Check expenseList" to see what's saved</li>
+                <li>Go to Manpower List page and add expense data</li>
+                <li>Click "আপডেট সংখ্যা এবং ক্রমিক নম্বর" button</li>
+                <li>Come back here and click "Check expenseList" again</li>
+                <li>Test a code using the "Test Lookup" section</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        function formatJSON(obj) {
+            return JSON.stringify(obj, null, 2);
+        }
+
+        function checkExpenseList() {
+            let html = '<h4>expenseList in localStorage:</h4>';
+            let expenseList = localStorage.getItem('expenseList');
+            
+            if (!expenseList) {
+                html += '<p class="error">❌ expenseList NOT FOUND</p>';
+                html += '<p class="info-box">ℹ️ Go to Manpower List page, add expense categories, and click the update button</p>';
+                document.getElementById('expenseStatus').innerHTML = html;
+                return;
+            }
+
+            try {
+                let parsed = JSON.parse(expenseList);
+                html += `<p class="success">✅ Found ${parsed.length} expense item(s)</p>`;
+                
+                if (parsed.length > 0) {
+                    html += '<table><tr><th>Code</th><th>Name</th></tr>';
+                    parsed.forEach(item => {
+                        html += `<tr><td><strong>${item.code}</strong></td><td>${item.name}</td></tr>`;
+                    });
+                    html += '</table>';
+                } else {
+                    html += '<p class="error">Empty list (no items)</p>';
+                }
+                
+                html += '<h4>Raw JSON:</h4>';
+                html += `<pre>${formatJSON(parsed)}</pre>`;
+            } catch (e) {
+                html += `<p class="error">❌ Error parsing: ${e.message}</p>`;
+            }
+            
+            document.getElementById('expenseStatus').innerHTML = html;
+        }
+
+        function checkManpowerTables() {
+            let html = '<h4>manpowerTables in localStorage:</h4>';
+            let tables = localStorage.getItem('manpowerTables');
+            
+            if (!tables) {
+                html += '<p class="error">❌ manpowerTables NOT FOUND</p>';
+                document.getElementById('tablesStatus').innerHTML = html;
+                return;
+            }
+
+            try {
+                let parsed = JSON.parse(tables);
+                html += `<p class="success">✅ Found manpowerTables</p>`;
+                
+                for (let key in parsed) {
+                    let count = parsed[key].length;
+                    html += `<p><strong>${key}:</strong> ${count} item(s)</p>`;
+                    
+                    if (count > 0) {
+                        html += '<table><tr><th>ID</th><th>Name</th></tr>';
+                        parsed[key].forEach(item => {
+                            html += `<tr><td><strong>${item.id}</strong></td><td>${item.name}</td></tr>`;
+                        });
+                        html += '</table>';
+                    }
+                }
+                
+                html += '<h4>Raw JSON:</h4>';
+                html += `<pre>${formatJSON(parsed)}</pre>`;
+            } catch (e) {
+                html += `<p class="error">❌ Error: ${e.message}</p>`;
+            }
+            
+            document.getElementById('tablesStatus').innerHTML = html;
+        }
+
+        function normalizeDigits(str) {
+            const digitsToEnglish = {
+                '०': '0', '१': '1', '२': '2', '३': '3', '४': '4',
+                '५': '5', '६': '6', '७': '7', '८': '8', '९': '9',
+                '০': '0', '১': '1', '२': '2', '३': '3', '४': '4',
+                '५': '5', '६': '6', '७': '7', '८': '8', '९': '9'
+            };
+            return str.replace(/[०-९०-९]/g, digit => digitsToEnglish[digit] || digit);
+        }
+
+        function testFetchManpower() {
+            let testCode = document.getElementById('testCode').value.trim();
+            let html = '';
+            
+            if (!testCode) {
+                html += '<p class="error">❌ Please enter a code</p>';
+                document.getElementById('testResult').innerHTML = html;
+                return;
+            }
+
+            const normalizedCode = normalizeDigits(testCode);
+            const possibleKeys = ['manpowerList', 'expenseList'];
+            let found = false;
+
+            for (let key of possibleKeys) {
+                let data = localStorage.getItem(key);
+                if (data) {
+                    try {
+                        let parsed = JSON.parse(data);
+                        let match = parsed.find(item => 
+                            normalizeDigits(item.code || item.id || '') === normalizedCode
+                        );
+                        
+                        if (match) {
+                            html += `<p class="success">✅ FOUND in <strong>${key}</strong></p>`;
+                            html += `<table><tr><th>Code</th><th>Name</th></tr>`;
+                            html += `<tr><td><strong>${match.code || match.id}</strong></td><td>${match.name}</td></tr>`;
+                            html += `</table>`;
+                            found = true;
+                            break;
+                        }
+                    } catch (e) {
+                        // Skip
+                    }
+                }
+            }
+
+            if (!found) {
+                html += `<p class="error">❌ Code <strong>"${testCode}"</strong> NOT FOUND</p>`;
+                html += '<p class="info-box">Make sure the code exists in your expense list</p>';
+            }
+
+            document.getElementById('testResult').innerHTML = html;
+        }
+
+        function createSampleExpenseData() {
+            let sampleData = {
+                expense: [
+                    {id: 'E001', name: 'অফিস ভাড়া', remarks: ''},
+                    {id: 'E002', name: 'বিদ্যুৎ বিল', remarks: ''},
+                    {id: 'E003', name: 'অফিস সরঞ্জাম', remarks: ''}
+                ],
+                jbc: [],
+                dm: [],
+                do: [],
+                agent: []
+            };
+
+            localStorage.setItem('manpowerTables', JSON.stringify(sampleData));
+
+            let expenseList = sampleData.expense.map(item => ({
+                code: item.id,
+                name: item.name
+            }));
+
+            localStorage.setItem('expenseList', JSON.stringify(expenseList));
+
+            let html = '<p class="success">✅ Sample data created!</p>';
+            html += '<h4>Created:</h4>';
+            html += '<table><tr><th>Code</th><th>Name</th></tr>';
+            html += '<tr><td>E001</td><td>অফিস ভাড়া</td></tr>';
+            html += '<tr><td>E002</td><td>বিদ্যুৎ বিল</td></tr>';
+            html += '<tr><td>E003</td><td>অফিস সরঞ্জাম</td></tr>';
+            html += '</table>';
+            html += '<p class="info-box">Now go to Data Entry page and test with code: <strong>E001</strong></p>';
+
+            document.getElementById('sampleResult').innerHTML = html;
+        }
+
+        function clearExpenseData() {
+            if (confirm('Delete expenseList and manpowerTables from localStorage?')) {
+                localStorage.removeItem('expenseList');
+                localStorage.removeItem('manpowerTables');
+                document.getElementById('clearResult').innerHTML = '<p class="success">✅ Cleared expenseList and manpowerTables</p>';
+            }
+        }
+
+        // Run on page load
+        window.addEventListener('load', function() {
+            checkExpenseList();
+        });
+    </script>
+</body>
+</html>

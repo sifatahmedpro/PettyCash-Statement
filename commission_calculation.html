@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Commission Calculation</title>
+<!-- Google Fonts: Added Hind Siliguri (for bold Bengali) and Roboto -->
+<link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;600;700&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* CDN Fonts for Kalpurush and SolaimanLipi (Normal weight only) */
+@font-face {
+  font-family: 'Kalpurush';
+  src: url('https://cdn.jsdelivr.net/gh/fonts-bangla/kalpurush@master/Kalpurush.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'SolaimanLipi';
+  src: url('https://cdn.jsdelivr.net/gh/fonts-bangla/solaimanlipi@master/SolaimanLipi.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+</style>
+<style>
+
+/* করপোরেট কালার: #3A358E (গাড় নীল) */
+:root {
+--primary-color: #3A358E;
+--secondary-color: #e8f0fe; /* Light blueish for background */
+--accent-color: #5c6bc0; /* Lighter blue for accents */
+--border-color: #ddd;
+--text-color: #333;
+}
+
+* {
+margin: 0;
+padding: 0;
+box-sizing: border-box;
+}
+
+body {
+/*
+  Font stack priority:
+  1. Kalpurush/SolaimanLipi: For general text (from @font-face)
+  2. Hind Siliguri: For bold Bengali (from Google Fonts)
+  3. Roboto: For numbers/English (from Google Fonts)
+  4. sans-serif: System fallback
+*/
+font-family: 'Kalpurush', 'SolaimanLipi', 'Hind Siliguri', 'Roboto', sans-serif;
+margin: 0;
+padding: 0;
+background-color: var(--secondary-color);
+color: var(--text-color);
+line-height: 1.6;
+}
+
+/* Main wrapper with flex layout for sidebar + content */
+.main-wrapper {
+max-width: 1400px;
+margin: 20px auto;
+box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+background: white;
+display: flex;
+min-height: 90vh;
+}
+
+/* Sidebar styles */
+.sidebar {
+width: 250px;
+background-color: #3A358E;
+color: white;
+padding: 20px 0;
+flex-shrink: 0;
+}
+
+.sidebar-header {
+font-size: 18px;
+font-weight: bold;
+text-align: center;
+margin-bottom: 20px;
+padding-bottom: 10px;
+border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.sidebar ul {
+list-style: none;
+padding: 0;
+margin: 0;
+}
+
+.sidebar ul li a {
+display: block;
+padding: 12px 20px;
+color: white;
+text-decoration: none;
+transition: background-color 0.3s;
+}
+
+.sidebar ul li a:hover,
+.sidebar ul li a.active {
+background-color: #2c286e;
+border-left: 5px solid #1abc9c;
+}
+
+/* Main content area */
+.main-content {
+flex-grow: 1;
+padding: 30px;
+}
+
+.container {
+background-color: #fff;
+padding: 40px;
+border-radius: 16px;
+box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+max-width: 1200px;
+margin: auto;
+position: relative;
+border: 1px solid var(--accent-color); /* Added border */
+}
+
+h1 {
+text-align: center;
+background-color: var(--primary-color);
+color: white;
+margin-bottom: 30px;
+padding: 15px;
+border: 3px solid var(--primary-color);
+border-radius: 8px;
+font-size: 32px;
+font-weight: 700;
+letter-spacing: 1px;
+}
+
+h2 {
+font-size: 22px;
+background-color: var(--primary-color);
+color: white;
+padding: 10px;
+border: 2px solid var(--primary-color);
+border-radius: 6px;
+margin-top: 40px;
+margin-bottom: 25px;
+font-weight: 600;
+}
+
+/* Original input-group, outside of the columns */
+.input-group {
+margin-bottom: 20px;
+display: flex;
+justify-content: space-between;
+align-items: center;
+padding: 8px 0;
+}
+
+label {
+font-weight: 600;
+flex: 2;
+margin-right: 20px;
+color: #444;
+font-size: 16px;
+font-family: 'Roboto', sans-serif; /* Default for non-Bengali labels */
+}
+
+input[type="number"] {
+padding: 12px 14px;
+border-radius: 8px;
+width: 40%;
+box-sizing: border-box;
+text-align: right;
+transition: all 0.3s ease;
+font-family: 'Roboto', sans-serif;
+font-size: 16px;
+/* === CHANGE 1: Made all number inputs colorful === */
+border: 1px solid var(--accent-color);
+background-color: var(--secondary-color); /* Was #f9faff */
+}
+
+input[type="number"]:focus,
+input[type="number"]:hover {
+border-color: var(--primary-color);
+box-shadow: 0 0 8px rgba(58, 53, 142, 0.2);
+outline: none;
+}
+
+/* Original result-group, outside of the columns */
+.result-group label {
+font-size: 17px;
+color: var(--primary-color);
+font-weight: 600;
+}
+
+.result-value {
+padding: 12px 14px;
+border: 1px solid var(--accent-color);
+border-radius: 8px;
+background-color: var(--secondary-color); /* Using variable */
+width: 40%;
+text-align: right;
+box-sizing: border-box;
+font-weight: 700;
+color: var(--text-color);
+min-height: 44px;
+display: flex;
+align-items: center;
+justify-content: flex-end;
+font-size: 16px;
+}
+
+hr {
+border: 0;
+height: 1px;
+background: var(--border-color);
+margin: 30px 0;
+}
+
+/* Two-column layout wrapper */
+.two-column-wrapper {
+display: grid;
+grid-template-columns: 1fr 1fr;
+gap: 40px;
+margin-bottom: 30px;
+}
+
+/* Left column for commission fields */
+.commission-column {
+display: flex;
+flex-direction: column;
+}
+
+.commission-column h2 {
+margin-top: 0;
+}
+
+/* Commission Inputs Grid */
+#commission-inputs {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+}
+
+#commission-inputs .input-group {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 0;
+    padding: 0;
+}
+
+#commission-inputs label {
+    font-size: 14px;
+    margin-bottom: 0;
+    margin-right: 15px;
+    flex: 1;
+}
+
+#commission-inputs input[type="number"] {
+    width: 150px;
+    padding: 8px 10px; /* Overrides default input padding */
+    font-size: 14px;
+    /* Styles from CHANGE 1 (colorful) will apply here */
+}
+
+
+/* Right column for results */
+.results-column {
+display: flex;
+flex-direction: column;
+}
+
+.results-column h2 {
+margin-top: 0;
+}
+
+/* Results Grid */
+.results-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+    align-items: start;
+}
+
+.results-column .result-group {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 0;
+    margin-bottom: 0;
+    gap: 5px;
+}
+
+.results-column label {
+    margin-bottom: 0;
+    margin-right: 0;
+    font-size: 14px;
+    font-weight: 600;
+    /* === CHANGE 2: Use bold-capable font for result labels === */
+    font-family: 'Hind Siliguri', sans-serif;
+}
+
+.results-column .result-value {
+    width: 100%;
+    margin-bottom: 0;
+    text-align: right;
+    padding: 8px 10px;
+    font-size: 14px;
+    background-color: var(--secondary-color); /* Using variable */
+    border: 1px solid var(--accent-color);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    box-sizing: border-box;
+    min-height: 38px;
+}
+
+.results-column input[type="number"] {
+    width: 100% !important;
+    padding: 8px 10px;
+    font-size: 14px;
+    margin-bottom: 0;
+    box-sizing: border-box;
+    /* Styles from CHANGE 1 (colorful) will apply here */
+}
+
+/* Container for full-width sections */
+.full-width-section {
+margin-top: 30px;
+}
+
+/* === CHANGE 3: Use Kalpurush/SolaimanLipi only for h1/h2 === */
+h1, h2 {
+  font-family: 'Kalpurush', 'SolaimanLipi', sans-serif;
+}
+/* .result-group label was removed from this rule */
+
+
+.footer {
+margin-top: 40px;
+padding-top: 20px;
+border-top: 2px solid #3A358E;
+display: flex;
+justify-content: space-between;
+font-size: 12px;
+color: #555;
+/* === CHANGE 4: Made footer text bold === */
+font-weight: 700;
+}
+
+.header {
+  text-align: center;
+}
+.logo {
+  max-width: 32%;
+  height: auto;
+}
+</style>
+</head>
+<body>
+
+<div class="main-wrapper">
+
+<!-- Full left sidebar -->
+<nav class="sidebar">
+<a class="sidebar-header" href="data entry.html" style="text-decoration: none; display: block; color: white;">
+🏠 হোম
+</a>
+<ul>
+<li><a href="data entry.html">📝 ডেটা এন্ট্রি</a></li>
+<li><a href="commission_calculation.html">🧮 কমিশন গণনা</a></li>
+<li><a href="pettycash-statement.html">💰 পেটিক্যাশ স্টেটমেন্টসমূহ</a></li>
+<li><a href="Commission Statement.html">📊 কমিশন স্টেটমেন্ট</a></li>
+<li><a href="Manpower List (Editable).html">👥 জনবল ও খরচের খাত</a></li>
+<li><a href="archive.html" class="active">📦 আর্কাইভ</a></li>
+<li><a href="data management.html">⚙️ ডাটা ম্যানেজমেন্ট</a></li>
+<li><a href="edit-archive.html">✏️ আর্কাইভ সম্পাদনা</a></li>
+</ul>
+</nav>
+<!-- Main content area -->
+<div class="main-content">
+<div class="header">
+             
+<img src="Logo.png" alt="জীবন বীমা কর্পোরেশন Logo" class="logo" onerror="this.style.display='none'">
+<div class="container">
+
+<h1>কমিশন গণনা</h1>
+
+<!-- Two column layout -->
+<div class="two-column-wrapper">
+
+  <!-- Left column: Commission input fields -->
+  <div class="commission-column">
+    <h2 id="commission-section-heading">প্রথম বর্ষের কমিশন</h2>
+    <div id="commission-inputs">
+      <!-- Fields are generated by JS -->
+    </div>
+  </div>
+
+  <!-- Right column: Results -->
+  <div class="results-column">
+    <h2>গণনার ফলাফল</h2>
+    
+    <div class="results-grid">
+     <div class="result-group">
+  <label style="font-family: 'Kalpurush', sans-serif;">মোট ১ম বর্ষ কমিশন</label>
+  <div class="result-value" id="total-first-year-commission">0.00</div>
+</div>
+    
+        <div class="result-group">
+          <label style="font-family: 'Kalpurush', sans-serif;">প্রকৃত ১ম বর্ষ কমিশন</label>
+          <div class="result-value" id="net-first-year-commission">0.00</div>
+        </div>
+    
+        <div class="result-group">
+          <!-- === CHANGE 5: Removed inline style, will be bolded by CSS rule === -->
+          <label style="font-family: 'Kalpurush', sans-serif;">মোট বিলের পরিমাণ</label>
+          <input type="number" id="total-bill-amount" min="0" oninput="calculateCommission()">
+        </div>
+    
+        <div class="result-group">
+          <label style="font-family: 'Kalpurush', sans-serif;">প্রকৃত নবায়ন বিল</label>
+          <div class="result-value" id="net-renewal-bill">0.00</div>
+        </div>
+    </div>
+    <!-- End of results-grid wrapper -->
+    
+  </div>
+
+</div>
+
+<hr>
+
+<div class="footer">
+  <span class="left-text">Designed & Developed By: Sifat Ahmed</span>
+  <span class="right-text">All Right Reserved 2025</span>
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+<script>
+
+// ফাংশন: ৭টি কমিশন ইনপুট ফিল্ড তৈরি করা
+function generateCommissionFields() {
+const container = document.getElementById('commission-inputs');
+// --- পরিবর্তন: বাংলা লেবেল অ্যারে যোগ করা হয়েছে ---
+const labels = ["প্রথম", "দ্বিতীয়", "তৃতীয়", "চতুর্থ", "পঞ্চম", "ষষ্ঠ", "সপ্তম"];
+
+// লুপটি 0 থেকে 6 পর্যন্ত চলবে
+for (let i = 0; i < 7; i++) {
+    const div = document.createElement('div');
+    div.className = 'input-group';
+    
+    // অ্যারে থেকে লেবেল টেক্সট এবং আইডি'র জন্য i + 1 ব্যবহার করুন
+    const labelText = labels[i];
+    const fieldId = `commission-field-${i + 1}`;
+
+    div.innerHTML = `
+<label for="${fieldId}" style="font-family: 'Kalpurush', sans-serif;">${labelText}</label>
+<input type="number" id="${fieldId}" class="commission-input" min="0" oninput="calculateCommission()">
+`;
+    container.appendChild(div);
+}
+}
+// ফাংশন: মূল হিসাব করা
+function calculateCommission() {
+// ১. ৭টি কমিশনের যোগফল (মোট ১ম বর্ষ কমিশন)
+const commissionFields = document.querySelectorAll('.commission-input');
+let sumCommission = 0;
+commissionFields.forEach(input => {
+// If the input is empty, parseFloat will return NaN. We use || 0 to treat empty fields as 0.
+const value = parseFloat(input.value) || 0;
+sumCommission += value;
+});
+
+// २. মোট বিলের পরিমাণ ইনপুট ডেটা নেওয়া
+const totalBillAmount = parseFloat(document.getElementById('total-bill-amount').value) || 0;
+
+// ३. মোট ১ম বর্ষ কমিশন আউটপুট
+const totalFirstYearCommission_raw = sumCommission;
+// ROUND UP: মোট ১ম বর্ষ কমিশন
+const totalFirstYearCommission_rounded = Math.ceil(totalFirstYearCommission_raw);
+document.getElementById('total-first-year-commission').textContent = totalFirstYearCommission_rounded.toFixed(2);
+
+// ४. প্রকৃত ১ম বর্ষ কমিশন (৫% কম)
+const netFirstYearCommission_raw = totalFirstYearCommission_raw * 0.95;
+// ROUND UP: প্রকৃত ১ম বর্ষ কমিশন
+const netFirstYearCommission_rounded = Math.ceil(netFirstYearCommission_raw);
+document.getElementById('net-first-year-commission').textContent = netFirstYearCommission_rounded.toFixed(2);
+
+// ५. প্রকৃত নবায়ন বিল = (মোট বিলের পরিমাণ) - (প্রকৃত ১ম বর্ষ কমিশন (৫% কম))
+//    Using the rounded net first year commission for this calculation
+const netRenewalBill_raw = totalBillAmount - netFirstYearCommission_rounded;
+// ROUND UP: প্রকৃত নবায়ন বিল
+const netRenewalBill_rounded = Math.ceil(netRenewalBill_raw);
+document.getElementById('net-renewal-bill').textContent = netRenewalBill_rounded.toFixed(2);
+}
+
+// পেজ লোড হওয়ার সময় ইনপুট ফিল্ডগুলো তৈরি করা এবং হিসাব শুরু করা
+window.onload = function() {
+generateCommissionFields();
+calculateCommission();
+};
+</script>
+
+</body>
+</html>
