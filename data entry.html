@@ -1,0 +1,1336 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>পেটিক্যাশ স্টেটমেন্ট ২০২৫</title>
+    <link rel="stylesheet" href="https://fonts.maateen.me/kalpurush/font.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Kalpurush', 'SolaimanLipi', Arial, sans-serif;
+            background: #f5f5f5;
+            margin: 0;
+        }
+        
+        .main-wrapper { 
+            max-width: 1400px;
+            margin: 20px auto;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            background: white;
+            display: flex;
+            min-height: 90vh; 
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 250px;
+            background-color: #3A358E; 
+            color: white;
+            padding: 20px 0;
+            flex-shrink: 0;
+        }
+        
+       
+.sidebar-header {
+    font-size: 22px;  /* Increased from 18px */
+    font-weight: bold;
+    text-align: center;
+    margin-bottom: 25px;  /* Increased from 20px */
+    padding-bottom: 15px;  /* Increased from 10px */
+    padding-top: 10px;  /* Added vertical padding */
+    padding-left: 10px;  /* Added horizontal padding */
+    padding-right: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+        .sidebar ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .sidebar ul li a {
+            display: block;
+            padding: 12px 20px;
+            color: white;
+            text-decoration: none;
+            transition: background-color 0.3s, padding-left 0.3s;
+            font-weight: bold;
+        }
+        .sidebar ul li a:hover,
+        .sidebar ul li a.active {
+            background-color: #2c286e; 
+            border-left: 5px solid #1abc9c;
+            padding-left: 25px;
+        }
+
+        .main-content {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+            max-height: 90vh;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 15px;
+            border-bottom: 3px solid #3A358E; 
+            padding-bottom: 15px;
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+        }
+
+        .header .logo {
+            max-width: 250px;
+            height: auto;
+            margin-bottom: 8px;
+            margin-top: 8px;
+        }
+
+        .header h2 {
+            font-size: 18px;
+            color: #3A358E;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        
+        .office-details {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 8px 0;
+            max-width: 800px;
+            margin: 0 auto;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .detail-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .detail-item label {
+            font-weight: bold;
+            white-space: nowrap;
+            font-size: 13px;
+        }
+        
+        .detail-item input {
+            padding: 6px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-family: 'Kalpurush', 'SolaimanLipi', Arial, sans-serif;
+            font-size: 12px;
+            width: 120px;
+            background-color: #f0f8ff;
+            border-color: #a0c4ff;
+        }
+
+        .expense-section {
+            margin-bottom: 12px;
+            border: 1px solid #ddd;
+            padding: 12px;
+            background-color: #f9f9f9;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .expense-section h3 {
+            background-color: #3A358E; 
+            color: white;
+            padding: 8px 12px;
+            margin: -12px -12px 10px -12px;
+            font-size: 14px;
+            border-top-left-radius: 6px;
+            border-top-right-radius: 6px;
+        }
+        
+        .expense-section h4 {
+            font-size: 13px;
+            font-weight: bold;
+            margin-bottom: 8px;
+            border-bottom: 1px solid #ddd; 
+            padding-bottom: 4px;
+            margin-top: 10px;
+        }
+        .expense-section h4:first-of-type {
+            margin-top: 0;
+        }
+
+        .entry-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px; 
+            padding: 8px;
+            border: 1px solid #eee;
+            background: #fff;
+            border-radius: 4px;
+            flex-wrap: wrap;
+        }
+        
+        .entry-row label {
+            flex-shrink: 0;
+            font-weight: bold;
+            font-size: 12px;
+            width: 100px;
+            text-align: right;
+        }
+
+        .entry-row .amount-label {
+             font-weight: bold;
+             width: auto;
+             text-align: left;
+             font-size: 12px;
+        }
+        
+        .entry-row select {
+            flex-grow: 1; 
+            padding: 6px;
+            min-width: 120px;
+            font-family: 'Kalpurush', 'SolaimanLipi', Arial, sans-serif;
+            font-size: 12px;
+            background-color: #f0f8ff;
+            border: 1px solid #a0c4ff;
+        }
+
+        .entry-row input[type="number"] {
+            width: 80px;
+            padding: 6px;
+            text-align: right;
+            font-family: 'Kalpurush', 'SolaimanLipi', Arial, sans-serif;
+            font-size: 12px;
+            background-color: #f0f8ff;
+            border: 1px solid #a0c4ff;
+        }
+        
+        .entry-row input[type="text"] {
+            padding: 6px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-family: 'Kalpurush', 'SolaimanLipi', Arial, sans-serif;
+            font-size: 12px;
+            background-color: #f0f8ff;
+            border-color: #a0c4ff;
+        }
+
+        .entry-row button {
+            flex-shrink: 0;
+            padding: 6px 10px;
+            background-color: #1abc9c;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background-color 0.3s;
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        .entry-row button:hover {
+            background-color: #16a085;
+        }
+
+        .manpower-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+            padding: 8px;
+            border: 1px solid #eee;
+            background: #fff;
+            border-radius: 4px;
+            flex-wrap: wrap;
+        }
+        
+        .manpower-row label {
+            flex-shrink: 0;
+            font-weight: bold;
+            width: 120px;
+            text-align: left;
+            font-size: 12px;
+        }
+        
+        .manpower-row input[type="text"] {
+            padding: 6px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-family: 'Kalpurush', 'SolaimanLipi', Arial, sans-serif;
+            font-size: 12px;
+            background-color: #f0f8ff;
+            border-color: #a0c4ff;
+        }
+
+        .manpower-row input#manpower-code {
+            width: 100px;
+            flex-shrink: 0;
+        }
+        .manpower-row input#manpower-name {
+            flex-grow: 1;
+            min-width: 120px;
+            background-color: #f0f0f0;
+        }
+        
+        .manpower-row button {
+            padding: 6px 10px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: background-color 0.3s;
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        .manpower-row button:hover {
+            background-color: #2980b9;
+        }
+        
+        .footer {
+            margin-top: 15px;
+            padding-top: 10px;
+            border-top: 2px solid #3A358E; 
+            display: flex;
+            justify-content: space-between; 
+            font-size: 10px;
+            color: #555;
+        }
+
+        #log-section {
+            margin: 15px auto;
+            padding: 12px;
+            background-color: #fff;
+            border: 1px solid #ddd;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            border-radius: 6px;
+        }
+
+        #log-section h3 {
+            background-color: #3A358E; 
+            color: white;
+            padding: 8px 12px;
+            margin: -12px -12px 10px -12px;
+            font-size: 14px;
+            text-align: center;
+            border-top-left-radius: 6px;
+            border-top-right-radius: 6px;
+        }
+
+        #log-section input {
+            width: 100%;
+            padding: 6px;
+            margin-bottom: 8px;
+            border: 1px solid #a0c4ff;
+            border-radius: 4px;
+            font-family: 'Kalpurush', 'SolaimanLipi', Arial, sans-serif;
+            font-size: 12px;
+            background-color: #f0f8ff;
+        }
+
+        #expense-log {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        #expense-log li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            border-bottom: 1px dotted #ddd;
+            font-size: 12px;
+            transition: background-color 0.3s;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        #expense-log li:hover {
+            background-color: #f5f5f5;
+        }
+
+        #expense-log li:last-child {
+            border-bottom: none;
+        }
+
+        .log-details {
+            flex-grow: 1;
+            font-weight: bold;
+            font-size: 12px;
+        }
+
+        .remove-btn {
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 10px;
+            transition: background-color 0.3s;
+        }
+
+        .remove-btn:hover {
+            background-color: #c0392b;
+        }
+
+        .edit-btn {
+            background-color: #27ae60;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 10px;
+            transition: background-color 0.3s;
+        }
+
+        .edit-btn:hover {
+            background-color: #219a52;
+        }
+
+        .log-empty-message {
+            text-align: center;
+            color: #888;
+            padding: 10px;
+            font-size: 12px;
+        }
+
+        .clear-all-btn {
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            margin-bottom: 8px;
+            display: block;
+            margin: 0 auto 8px auto;
+            transition: background-color 0.3s;
+            font-weight: bold;
+        }
+
+        .clear-all-btn:hover {
+            background-color: #c0392b;
+        }
+
+        input, select, textarea, button {
+            font-family: 'Kalpurush', 'SolaimanLipi', Arial, sans-serif !important;
+        }
+
+        /* --- LAYOUT --- */
+        .forms-and-log-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 15px;
+        }
+
+        .forms-column-1, .forms-column-2 {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .forms-column-1 .expense-section,
+        .forms-column-2 .expense-section {
+            margin: 0;
+        }
+
+        .development-section .form-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+            padding: 8px;
+            background: #fff;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            flex-wrap: wrap;
+        }
+
+        .development-section .form-group label {
+            font-weight: bold;
+            min-width: 90px;
+            text-align: right;
+            flex-shrink: 0;
+            font-size: 12px;
+        }
+
+        .development-section .form-group input,
+        .development-section .form-group select {
+            padding: 6px;
+            min-width: 80px;
+            flex-grow: 1;
+            font-size: 12px;
+            background-color: #f0f8ff;
+            border: 1px solid #a0c4ff;
+            border-radius: 4px;
+        }
+
+        .development-section .form-group button {
+            flex-shrink: 0;
+            padding: 6px 10px;
+            background-color: #1abc9c;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        .development-section .form-group button:hover {
+            background-color: #16a085;
+        }
+
+        .development-section .button-row {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .development-section .button-row button {
+            padding: 8px 15px;
+            font-size: 12px;
+        }
+
+        .section-divider {
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        @media (max-width: 1200px) {
+            .forms-and-log-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+    </style>
+</head>
+<body>
+    <div class="main-wrapper">
+        <nav class="sidebar">
+            <a class="sidebar-header" href="data entry.html" style="text-decoration: none; display: block; color: white;">
+                🏠 হোম
+            </a>
+            <ul>
+                <li><a href="data entry.html" class="active">📝 ডেটা এন্ট্রি</a></li> <li><a href="commission_calculation.html">🧮 কমিশন গণনা</a></li>
+                <li><a href="pettycash-statement.html">💰 পেটিক্যাশ স্টেটমেন্টসমূহ</a></li>
+                <li><a href="Commission Statement.html">📊 কমিশন স্টেটমেন্ট</a></li>
+                <li><a href="Manpower List (Editable).html">👥 জনবল ও খরচের খাত</a></li>
+                <li><a href="archive.html">📦 আর্কাইভ</a></li>
+                <li><a href="data management.html">⚙️ ডাটা ম্যানেজমেন্ট</a></li>
+		<li><a href="edit-archive.html">✏️ আর্কাইভ সম্পাদনা</a></li>
+            </ul>
+        </nav>
+
+        <div class="main-content">
+            <div class="header">
+                <img src="Logo.png" alt="জীবন বীমা কর্পোরেশন Logo" class="logo">
+                <h2>পেটিক্যাশ স্টেটমেন্ট</h2>
+                <div class="office-details">
+                    <div class="detail-item">
+                        <label>অফিস কোড:</label>
+                        <input type="text" value="००১৬" style="width: 80px;">
+                    </div>
+                    <div class="detail-item">
+                        <label>অফিসের নাম:</label>
+                        <input type="text" value="সেলস অফিস-১৬, নারায়ণগঞ্জ" style="width: 180px;">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="forms-and-log-container">
+                
+                <div class="forms-column-1">
+                    <div class="expense-section">
+                        <h3>খরচের তারিখ ও ধরন</h3>
+                        <div class="entry-row">
+                            <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 200px;">
+                                <label for="expense-date" style="width: 60px; text-align: left; font-weight: bold; font-size: 12px;">তারিখ:</label>
+                                <input type="text" id="expense-date" placeholder="dd/mm/yy" maxlength="8" style="width: 80px; flex: none;">
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 180px;">
+                                <label for="payment-type" style="width: auto; text-align: left; font-weight: bold; font-size: 12px;">ধরন:</label>
+                                <select id="payment-type" style="flex-grow: 1; min-width: 80px;">
+                                    <option value="" disabled selected>নির্বাচন করুন</option>
+                                    <option value="bank">ব্যাংক</option>
+                                    <option value="cash">ক্যাশ</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="manpower-row">
+                            <label for="manpower-code">কোড:</label>
+                            <input type="text" id="manpower-code" placeholder="যেমন: 2504" style="width: 90px;">
+                            <input type="text" id="manpower-name" placeholder="নাম" readonly style="flex-grow: 1;">
+                            <button onclick="fetchManpowerName()">খুঁজুন</button>
+                        </div>
+                    </div>
+
+                    <div class="expense-section">
+                        <h3>অফিস খরচ</h3>
+                        <div class="entry-row">
+                            <label for="office-expenses" style="width: 90px;">বিভাগ:</label>
+                            <select id="office-expenses" style="flex-grow: 1; min-width: 120px;">
+                                <option value="" disabled selected>নির্বাচন করুন</option>
+                                <option value="কর্মচারী বেতন (অফিস)">কর্মচারী বেতন (অফিস)</option>
+                                <option value="উৎসব বোনাস (অফিস)">উৎসব বোনাস (অফিস)</option>
+                                <option value="লাঞ্চভাতা (অফিস)">লাঞ্চভাতা (অফিস)</option>
+                                <option value="উৎসাহ বোনাস (অফিস)">উৎসাহ বোনাস (অফিস)</option>
+                                <option value="বৈশাখী ভাতা (অফিস)">বৈশাখী ভাতা (অফিস)</option>
+                                <option value="শ্রান্তি ও বিনোদন ভাতা">শ্রান্তি ও বিনোদন ভাতা</option>
+                                <option value="ক্যাশ এলাউন্স">ক্যাশ এলাউন্স</option>
+                                <option value="ভ্রমণ ও যাতায়াত খরচ">ভ্রমণ ও যাতায়াত খরচ</option>
+				<option value="চিকিৎসা খরচ (অফিস)">চিকিৎসা খরচ (অফিস)</option>
+                            </select>
+                            <label class="amount-label">পরিমাণ:</label>
+                            <input type="number" id="amount-office" min="0" placeholder="টাকা" style="width: 70px;">
+                            <button onclick="saveEntry('office-expenses', 'amount-office')">সেভ</button>
+                        </div>
+                    </div>
+
+                    <div class="expense-section">
+                        <h3>দাপ্তরিক খরচ</h3>
+                        <div class="entry-row">
+                            <label for="official-expenses" style="width: 90px;">ধরন:</label>
+                            <select id="official-expenses" style="flex-grow: 1; min-width: 120px;">
+                                <option value="" disabled selected>নির্বাচন করুন</option>
+                                <option value="পেটিক্যাশ">পেটিক্যাশ</option>
+                                <option value="টেলিফোন বিল">টেলিফোন বিল</option>
+                                <option value="মুদ্রণ ও মণিহারি খরচ">মুদ্রণ ও মণিহারি খরচ</option>
+                                <option value="রাজস্ব টিকেট">রাজস্ব টিকেট</option>
+                                <option value="ইন্টারনেট বিল">ইন্টারনেট বিল</option>
+                                <option value="সাধারণ খরচ">সাধারণ খরচ</option>
+                                <option value="পত্রিকা বিল">পত্রিকা বিল</option>
+                                <option value="বিবিধ ব্যয়">বিবিধ ব্যয়</option>
+                                <option value="আসবাবপত্র ক্রয়">আসবাবপত্র ক্রয়</option>
+				<option value="ডাক ও তার খরচ">ডাক ও তার খরচ</option>
+				<option value="অফিস ভাড়া">অফিস ভাড়া</option>
+				<option value="দৈঃমঃভিঃ কর্মচারীর বিল">দৈঃমঃভিঃ কর্মচারীর বিল</option>
+                            </select>
+                            <label class="amount-label">পরিমাণ:</label>
+                            <input type="number" id="amount-official" min="0" placeholder="টাকা" style="width: 70px;">
+                            <button onclick="saveEntry('official-expenses', 'amount-official')">সেভ</button>
+                        </div>
+                    </div>
+
+                </div> <div class="forms-column-2">
+                    
+                    <div class="expense-section development-section">
+                        <h3>উন্নয়ন বিভাগ</h3>
+                        
+                        <h4>এজেন্ট কমিশন</h4>
+                        
+                        <div class="form-group">
+                            <label for="commission-first-year">১ম বর্ষ কমিশন:</label>
+                            <input type="hidden" id="commission-first-year-select" value="১ম বর্ষ কমিশন">
+                            <input type="number" id="amount-first-year" min="0" placeholder="টাকা" style="width: 70px;">
+                            <input type="text" id="bill-no-first-year" placeholder="বিল নং" style="width: 70px;">
+                            <input type="text" id="bill-date-first-year" placeholder="dd/mm/yy" maxlength="8" style="width: 70px;">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="commission-renewal">নবায়ন কমিশন:</label>
+                            <input type="hidden" id="commission-renewal-select" value="নবায়ন কমিশন">
+                            <input type="number" id="amount-renewal" min="0" placeholder="টাকা" style="width: 70px;">
+                            <input type="text" id="bill-no-renewal" placeholder="বিল নং" style="width: 70px;">
+                            <input type="text" id="bill-date-renewal" placeholder="dd/mm/yy" maxlength="8" style="width: 70px;">
+                        </div>
+                        
+                        <div class="button-row">
+                            <button onclick="saveCommissionEntries()">সেভ এন্ট্রি</button>
+                        </div>
+                        
+                        <div class="section-divider">
+                            <h4>কর্মকর্তা</h4>
+                            
+                            <div class="form-group">
+                                <label for="development-staff" style="width: 100%; text-align: left;">খরচের ধরন:</label>
+                            </div>
+                            <div class="form-group">
+                                <select id="development-staff" style="flex-grow: 1; min-width: 120px;">
+                                    <option value="" disabled selected>নির্বাচন করুন</option>
+                                    <option value="প্রোডাকশন বোনাস">প্রোডাকশন বোনাস</option>
+                                    <option value="কর্মচারী বেতন (উন্নয়ন)">কর্মচারী বেতন (উন্নয়ন)</option>
+                                    <option value="উৎসব বোনাস (উন্নয়ন)">উৎসব বোনাস (উন্নয়ন)</option>
+                                    <option value="উৎসাহ বোনাস (উন্নয়ন)">উৎসাহ বোনাস (উন্নয়ন)</option>
+                                    <option value="বৈশাখী ভাতা (উন্নয়ন)">বৈশাখী ভাতা (উন্নয়ন)</option>
+                                    <option value="ডাক্তারী পরীক্ষার ফি">ডাক্তারী পরীক্ষার ফি</option>
+                                    <option value="লাঞ্চভাতা (উন্নয়ন)">লাঞ্চভাতা (উন্নয়ন)</option>
+				    <option value="বোনাস কমিশন">বোনাস কমিশন</option>
+                                </select>
+                                <label class="amount-label">পরিমাণ:</label>
+                                <input type="number" id="amount-staff" min="0" placeholder="টাকা" style="width: 70px;">
+                                <button onclick="saveEntry('development-staff', 'amount-staff')">সেভ</button>
+                            </div>
+                        </div>
+
+                    </div> </div> </div> <div id="log-section">
+                <h3>সেভ করা এন্ট্রির তালিকা</h3>
+                <input type="text" id="search-log" placeholder="অনুসন্ধান করুন (তারিখ, বিবরণ, পরিমাণ)">
+                <button class="clear-all-btn" onclick="clearAllEntries()">সব মুছুন</button>
+                <ul id="expense-log">
+                    <li class="log-empty-message">কোনো এন্ট্রি সেভ করা হয়নি।</li>
+                </ul>
+            </div>
+
+            <div class="footer">
+                <span class="left-text">Designed & Developed By: Sifat Ahmed</span>
+                <span class="right-text">All Right Reserved 2025</span>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script>
+    const EXPENSE_MAPPING = {
+        '১ম বর্ষ কমিশন': '১ম বর্ষ কমিশন',
+        'নবায়ন কমিশন': 'নবায়ন কমিশন',
+        'প্রোডাকশন বোনাস': 'প্রোডাকশন বোনাস',
+        'কর্মচারী বেতন (উন্নয়ন)': 'কর্মচারী বেতন (উন্নয়ন)',
+        'উৎসব বোনাস (উন্নয়ন)': 'উৎসব বোনাস (উন্নয়ন)',
+        'উৎসাহ বোনাস (উন্নয়ন)': 'উৎসাহ বোনাস (উন্নয়ন)',
+        'বৈশাখী ভাতা (উন্নয়ন)': 'বৈশাখী ভাতা (উন্নয়ন)',
+        'ডাক্তারী পরীক্ষার ফি': 'ডাক্তারী পরীক্ষার ফি',
+        'লাঞ্চভাতা (উন্নয়ন)': 'লাঞ্চভাতা (উন্নয়ন)',
+        'কর্মচারী বেতন (অফিস)': 'কর্মচারী বেতন (অফিস)',
+        'উৎসব বোনাস (অফিস)': 'উৎসব বোনাস (অফিস)',
+        'লাঞ্চভাতা (অফিস)': 'লাঞ্চভাতা (অফিস)',
+        'উৎসাহ বোনাস (অফিস)': 'উৎসাহ বোনাস (অফিস)',
+        'বৈশাখী ভাতা (অফিস)': 'বৈশাখী ভাতা (অফিস)',
+        'শ্রান্তি ও বিনোদন ভাতা': 'শ্রান্তি ও বিনোদন ভাতা',
+        'ক্যাশ এলাউন্স': 'ক্যাশ এলাউন্স',
+        'ভ্রমণ ও যাতায়াত খরচ': 'ভ্রমণ ও যাতায়াত খরচ',
+        'পেটিক্যাশ': 'পেটিক্যাশ',
+        'টেলিফোন বিল': 'টেলিফোন বিল',
+        'মুদ্রণ ও মণিহারি খরচ': 'মুদ্রণ ও মণিহারি খরচ',
+        'রাজস্ব টিকেট': 'রাজস্ব টিকেট',
+        'ইন্টারনেট বিল': 'ইন্টারনেট বিল',
+        'সাধারণ খরচ': 'সাধারণ খরচ',
+        'পত্রিকা বিল': 'পত্রিকা বিল',
+        'বিবিধ ব্যয়': 'বিবিধ ব্যয়',
+        'আসবাবপত্র ক্রয়': 'আসবাবপত্র ক্রয়',
+        'বোনাস কমিশন': 'বোনাস কমিশন',
+        'ডাক ও তার খরচ': 'ডাক ও তার খরচ',
+        'অফিস ভাড়া': 'অফিস ভাড়া',
+        'চিকিৎসা খরচ (অফিস)': 'চিকিৎসা খরচ (অফিস)',
+        'দৈঃমঃভিঃ কর্মচারীর বিল': 'দৈঃমঃভিঃ কর্মচারীর বিল'
+    };
+
+    let currentEditingId = null;
+
+    function formatDateToDDMMYY(isoDate) {
+        const d = new Date(isoDate);
+        if (isNaN(d.getTime())) return isoDate;
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = String(d.getFullYear() % 100).padStart(2, '0');
+        return `${day}/${month}/${year}`;
+    }
+
+    function parseDateToISO(dateStr) {
+        if (!dateStr) return null;
+        const parts = dateStr.split('/');
+        if (parts.length !== 3) return null;
+        
+        let day = parts[0];
+        let month = parts[1];
+        let year = parts[2];
+
+        if (day.length !== 2 || month.length !== 2 || year.length !== 2) {
+             return null;
+        }
+        
+        let fullYear = '20' + year;
+        const iso = `${fullYear}-${month}-${day}`;
+        const d = new Date(iso);
+        
+        if (isNaN(d.getTime()) || d.getDate() !== parseInt(day) || (d.getMonth() + 1) !== parseInt(month)) {
+            return null;
+        }
+        return iso;
+    }
+
+    // --- THIS FUNCTION IS NOW FIXED ---
+    function normalizeDigits(str) {
+        if (!str) return '';
+        const bengaliToEnglish = {
+            // Bengali Digits
+            '০': '0', '১': '1', '২': '2', '৩': '3', '৪': '4',
+            '৫': '5', '৬': '6', '৭': '7', '৮': '8', '৯': '9',
+            // Devanagari Digits
+            '०': '0', '१': '1', '२': '2', '३': '3', '४': '4',
+            '५': '5', '६': '6', '७': '7', '८': '8', '९': '9'
+        };
+        // This regex /[০-৯०-९]/g matches BOTH Bengali and Devanagari digits
+        return str.replace(/[০-৯०-९]/g, digit => bengaliToEnglish[digit] || digit);
+    }
+    // --- END OF FIX ---
+
+    function fetchManpowerName() {
+        const codeInput = document.getElementById('manpower-code');
+        const nameInput = document.getElementById('manpower-name');
+        const code = codeInput.value.trim();
+        
+        console.log('=== Starting fetchManpowerName ===');
+        console.log('Input code:', code);
+
+        if (!code) {
+            nameInput.value = '';
+            return;
+        }
+
+        // --- This function will now correctly normalize codes like '৪০০৯৯৯১৩' and '२५०४' ---
+        const normalizedCode = normalizeDigits(code);
+        console.log('Normalized code:', normalizedCode);
+
+        console.log('Checking localStorage keys...');
+        console.log('Available keys:', Object.keys(localStorage));
+        
+        let expenseList = null;
+        let manpowerList = null;
+
+        try {
+            let expenseData = localStorage.getItem('expenseList');
+            console.log('expenseList raw data:', expenseData);
+            if (expenseData) {
+                expenseList = JSON.parse(expenseData);
+                console.log('✓ expenseList parsed:', expenseList);
+            }
+        } catch (e) {
+            console.error('Error parsing expenseList:', e);
+        }
+
+        try {
+            let manpowerData = localStorage.getItem('manpowerList');
+            console.log('manpowerList raw data:', manpowerData);
+            if (manpowerData) {
+                manpowerList = JSON.parse(manpowerData);
+                console.log('✓ manpowerList parsed:', manpowerList);
+            }
+        } catch (e) {
+            console.error('Error parsing manpowerList:', e);
+        }
+
+        if (expenseList && Array.isArray(expenseList)) {
+            console.log('Searching in expenseList...');
+            const person = expenseList.find(item => {
+                const itemCode = normalizeDigits(item.code || item.id || '');
+                console.log('Comparing (expenseList):', itemCode, '===', normalizedCode);
+                return itemCode === normalizedCode;
+            });
+
+            if (person) {
+                console.log('✓ FOUND in expenseList:', person);
+                nameInput.value = person.name || '';
+                return;
+            }
+        }
+
+        if (manpowerList && Array.isArray(manpowerList)) {
+            console.log('Searching in manpowerList...');
+            const person = manpowerList.find(item => {
+                const itemCode = normalizeDigits(item.code || item.id || '');
+                console.log('Comparing (manpowerList):', itemCode, '===', normalizedCode);
+                return itemCode === normalizedCode;
+            });
+
+            if (person) {
+                console.log('✓ FOUND in manpowerList:', person);
+                nameInput.value = person.name || '';
+                return;
+            }
+        }
+
+        console.log('Searching in manpowerTables...');
+        try {
+            let tablesData = localStorage.getItem('manpowerTables');
+            if (tablesData) {
+                let tables = JSON.parse(tablesData);
+                console.log('manpowerTables:', tables);
+
+                for (let tableKey in tables) {
+                    let items = tables[tableKey];
+                    if (Array.isArray(items)) {
+                        const person = items.find(item => {
+                            const itemCode = normalizeDigits(item.id || item.code || '');
+                            console.log(`Comparing (manpowerTables[${tableKey}]):`, itemCode, '===', normalizedCode);
+                            return itemCode === normalizedCode;
+                        });
+
+                        if (person) {
+                            console.log('✓ FOUND in manpowerTables[' + tableKey + ']:', person);
+                            nameInput.value = person.name || '';
+                            return;
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('Error in manpowerTables search:', e);
+        }
+
+        console.log('✗ Code not found in any list');
+        alert('কোড পাওয়া যায়নি: ' + code + '\n\nঅনুগ্রহ করে "জনবল ও খরচের খাত" পাতায় কোডটি যোগ করুন।');
+        nameInput.value = '';
+    }
+
+    // ================== UPDATED FUNCTION ==================
+    function saveCommissionEntries() {
+        const dateInput = document.getElementById('expense-date');
+        const paymentTypeSelect = document.getElementById('payment-type');
+        
+        const dateStr = dateInput.value.trim();
+        const dateISO = parseDateToISO(dateStr);
+        if (!dateISO) {
+            alert("দয়া করে সঠিক তারিখ লিখুন (dd/mm/yy ফরম্যাটে)।");
+            return;
+        }
+        
+        // Commission is always 'bank', but we check if a type is selected for validation
+        const paymentType = paymentTypeSelect.value;
+        if (!paymentType) {
+            alert("দয়া করে পরিশোধের ধরন (ব্যাংক/ক্যাশ) নির্ধারণ করুন।");
+            return;
+        }
+
+        const manpowerCodeInput = document.getElementById('manpower-code');
+        const manpowerNameInput = document.getElementById('manpower-name');
+        const manpowerCode = manpowerCodeInput.value.trim();
+        const manpowerName = manpowerNameInput.value.trim();
+
+        const amountFirstYear = parseFloat(document.getElementById('amount-first-year').value);
+        const billNoFirstYear = document.getElementById('bill-no-first-year').value.trim();
+        const billDateFirstYearStr = document.getElementById('bill-date-first-year').value.trim();
+        const billDateFirstYear = parseDateToISO(billDateFirstYearStr);
+
+        const amountRenewal = parseFloat(document.getElementById('amount-renewal').value);
+        const billNoRenewal = document.getElementById('bill-no-renewal').value.trim();
+        const billDateRenewalStr = document.getElementById('bill-date-renewal').value.trim();
+        const billDateRenewal = parseDateToISO(billDateRenewalStr);
+
+        let expenses = JSON.parse(localStorage.getItem('pettyCashExpenses') || '[]');
+        let savedCount = 0;
+        
+        // --- THIS IS THE FIX ---
+        // Create a unique session ID for this save operation
+        const sessionId = Date.now();
+        // --- END OF FIX ---
+
+        // Check for edit mode
+        if (currentEditingId) {
+             alert('কমিশন এন্ট্রি এডিট করা যাবে না। অনুগ্রহ করে মুছে আবার যোগ করুন।');
+             return;
+        }
+
+        if (!isNaN(amountFirstYear) && amountFirstYear > 0) {
+            const entry = {
+                id: sessionId + 1, // Unique ID
+                sessionId: sessionId, // Link to this session
+                date: dateISO,
+                expenseColumn: EXPENSE_MAPPING['১ম বর্ষ কমিশন'],
+                amount: amountFirstYear,
+                details: '১ম বর্ষ কমিশন',
+                paymentType: 'bank' // Commission is always bank
+            };
+
+            if (manpowerCode && manpowerName) {
+                entry.manpowerCode = manpowerCode;
+                entry.manpowerName = manpowerName;
+                entry.details = `১ম বর্ষ কমিশন (${manpowerName})`;
+            }
+
+            if (billNoFirstYear) entry.billNo = billNoFirstYear;
+            if (billDateFirstYear) entry.billDate = billDateFirstYear;
+
+            expenses.push(entry);
+            savedCount++;
+        }
+
+        if (!isNaN(amountRenewal) && amountRenewal > 0) {
+            const entry = {
+                id: sessionId + 2, // Unique ID
+                sessionId: sessionId, // Link to this session
+                date: dateISO,
+                expenseColumn: EXPENSE_MAPPING['নবায়ন কমিশন'],
+                amount: amountRenewal,
+                details: 'নবায়ন কমিশন',
+                paymentType: 'bank' // Commission is always bank
+            };
+
+            if (manpowerCode && manpowerName) {
+                entry.manpowerCode = manpowerCode;
+                entry.manpowerName = manpowerName;
+                entry.details = `নবায়ন কমিশন (${manpowerName})`;
+            }
+
+            if (billNoRenewal) entry.billNo = billNoRenewal;
+            if (billDateRenewal) entry.billDate = billDateRenewal;
+
+            expenses.push(entry);
+            savedCount++;
+        }
+
+        if (savedCount === 0) {
+            alert("দয়া করে অন্তত একটি কমিশনের পরিমাণ লিখুন।");
+            return;
+        }
+
+        localStorage.setItem('pettyCashExpenses', JSON.stringify(expenses));
+        
+        let message = `${savedCount}টি এন্ট্রি সফলভাবে সেভ করা হয়েছে!\n`;
+        if (!isNaN(amountFirstYear) && amountFirstYear > 0) {
+            message += `\n১ম বর্ষ কমিশন: ${amountFirstYear} টাকা`;
+        }
+        if (!isNaN(amountRenewal) && amountRenewal > 0) {
+            message += `\nনবায়ন কমিশন: ${amountRenewal} টাকা`;
+        }
+        message += `\nমাধ্যম: ব্যাংক`;
+        
+        alert(message);
+        
+        document.getElementById('amount-first-year').value = "";
+        document.getElementById('bill-no-first-year').value = "";
+        document.getElementById('bill-date-first-year').value = "";
+        document.getElementById('amount-renewal').value = "";
+        document.getElementById('bill-no-renewal').value = "";
+        document.getElementById('bill-date-renewal').value = "";
+        manpowerCodeInput.value = "";
+        manpowerNameInput.value = "";
+        
+        displayExpenseLog();
+    }
+    // ================== END OF UPDATE ==================
+
+    // data entry.html ফাইলের <script> ট্যাগের ভেতরের কোড
+    // ========== এই ফাংশনটি সমাধান করা হয়েছে (FIXED) ==========
+
+function saveEntry(selectElementId, amountInputId, forcedPaymentType = null) {
+    const dateInput = document.getElementById('expense-date');
+    const selectElement = document.getElementById(selectElementId);
+    const amountInput = document.getElementById(amountInputId);
+    const paymentTypeSelect = document.getElementById('payment-type');
+
+    const dateStr = dateInput.value.trim();
+    const dateISO = parseDateToISO(dateStr);
+    if (!dateISO) {
+        alert("দয়া করে সঠিক তারিখ লিখুন (dd/mm/yy ফরম্যাটে)।");
+        return;
+    }
+    const paymentType = forcedPaymentType || paymentTypeSelect.value;
+    const amount = parseFloat(amountInput.value);
+    let dropdownValue;
+
+    if (!paymentType) {
+        alert("দয়া করে পরিশোধের ধরন (ব্যাংক/ক্যাশ) নির্ধারণ করুন।");
+        return;
+    }
+
+    if (selectElement.tagName === 'SELECT') {
+        dropdownValue = selectElement.value;
+    } else if (selectElement.tagName === 'INPUT' && selectElement.type === 'hidden') {
+        dropdownValue = selectElement.value;
+    } else {
+        alert("ত্রুটি: নির্ধারণ উপাদান খুঁজে পাওয়া যায়নি।");
+        return;
+    }
+
+    if (dropdownValue === "" || !(dropdownValue in EXPENSE_MAPPING)) {
+        alert("দয়া করে খরচের প্রকার নির্ধারণ করুন বা মানচিত্রে মান ত্রুটিপূর্ণ।");
+        return;
+    }
+
+    if (isNaN(amount) || amount <= 0) {
+        alert("দয়া করে সঠিক পরিমাণ লিখুন।");
+        return;
+    }
+
+    const manpowerCodeInput = document.getElementById('manpower-code');
+    const manpowerNameInput = document.getElementById('manpower-name');
+    const manpowerCode = manpowerCodeInput.value.trim();
+    const manpowerName = manpowerNameInput.value.trim();
+
+    // ================== মূল সমাধান (FIXED) ==================
+    // "পেটিক্যাশ" একটি বিশেষ এন্ট্রি। এটি "কন্ট্রা" কলামে যাবে।
+    
+    let expenseStatementColumn = EXPENSE_MAPPING[dropdownValue];
+    
+    if (dropdownValue === 'পেটিক্যাশ') {
+        expenseStatementColumn = 'কন্ট্রা'; // "পেটিক্যাশ"-কে "কন্ট্রা" কলাম হিসাবে সেভ করুন
+    }
+    // ================== শেষ ==================
+    
+    const entry = {
+        id: currentEditingId || Date.now(),
+        date: dateISO,
+        expenseColumn: expenseStatementColumn, // এটি এখন "কন্ট্রা" হবে যদি "পেটিক্যাশ" সিলেক্ট করা হয়
+        amount: amount,
+        details: dropdownValue,
+        paymentType: paymentType
+    };
+
+    if (manpowerCode && manpowerName) {
+        entry.manpowerCode = manpowerCode;
+        entry.manpowerName = manpowerName;
+        entry.details = `${dropdownValue} (${manpowerName})`;
+    }
+
+    // ********** ডাবল কাউন্টিং এর কারণটি এখান থেকে মুছে ফেলা হলো **********
+    /* if (dropdownValue === 'পেটিক্যাশ') {
+        entry.contraAmount = amount;
+    }
+    */
+    // ***************************************************************
+
+    let expenses = JSON.parse(localStorage.getItem('pettyCashExpenses') || '[]');
+    
+    let actionMsg = 'সেভ';
+    if (currentEditingId) {
+        const index = expenses.findIndex(e => e.id === currentEditingId);
+        if (index !== -1) {
+            expenses[index] = entry;
+            actionMsg = 'আপডেট';
+        } else {
+            // Failsafe: if ID not found, just add as new entry
+            expenses.push(entry);
+        }
+        currentEditingId = null; // Clear editing ID
+    } else {
+        expenses.push(entry);
+    }
+    localStorage.setItem('pettyCashExpenses', JSON.stringify(expenses));
+
+    console.log(`Saving Entry: ${expenseStatementColumn}, Amount: ${amount}, Type: ${paymentType}`);
+    alert(`এন্ট্রি সফলভাবে ${actionMsg} করা হয়েছে!\nখরচ: ${entry.details}\nপরিমাণ: ${amount} টাকা\nমাধ্যম: ${paymentType === 'bank' ? 'ব্যাংক' : 'ক্যাশ'}`);
+    
+    if (selectElement.tagName === 'SELECT') {
+        selectElement.selectedIndex = 0;
+    }
+    amountInput.value = "";
+    manpowerCodeInput.value = "";
+    manpowerNameInput.value = "";
+    
+    // Reset commission fields just in case
+    document.getElementById('amount-first-year').value = "";
+    document.getElementById('bill-no-first-year').value = "";
+    document.getElementById('bill-date-first-year').value = "";
+    document.getElementById('amount-renewal').value = "";
+    document.getElementById('bill-no-renewal').value = "";
+    document.getElementById('bill-date-renewal').value = "";
+
+    displayExpenseLog();
+}
+
+    function removeEntry(id) {
+        const entryId = parseInt(id);
+        if (isNaN(entryId) || entryId <= 0) {
+             alert("ত্রুটি: বৈধ এন্ট্রি আইডি পাওয়া যায়নি।");
+             return;
+        }
+
+        if (!confirm("আপনি কি নিশ্চিত যে আপনি এই এন্ট্রিটি মুছতে চান?")) {
+            return;
+        }
+        
+        let expenses = JSON.parse(localStorage.getItem('pettyCashExpenses') || '[]');
+        const updatedExpenses = expenses.filter(entry => entry.id !== entryId);
+        localStorage.setItem('pettyCashExpenses', JSON.stringify(updatedExpenses));
+        alert("এন্ট্রি সফলভাবে মুছে ফেলা হয়েছে।");
+        displayExpenseLog();
+    }
+
+    function clearAllEntries() {
+        if (confirm("আপনি কি নিশ্চিত যে সব এন্ট্রি মুছতে চান? এটি পুনরুদ্ধার করা যাবে না।")) {
+            localStorage.removeItem('pettyCashExpenses');
+            displayExpenseLog();
+            alert("সব এন্ট্রি সফলভাবে মুছে ফেলা হয়েছে।");
+        }
+    }
+
+    function editEntry(id) {
+        let expenses = JSON.parse(localStorage.getItem('pettyCashExpenses') || '[]');
+        const entry = expenses.find(e => e.id === id);
+        if (!entry) {
+            alert("এন্ট্রি পাওয়া যায়নি।");
+            return;
+        }
+
+        const baseDetails = entry.details.split(' (')[0];
+        
+        // কমিশন এন্ট্রি এডিট নিষিদ্ধ করা হয়েছে
+        if (baseDetails === '১ম বর্ষ কমিশন' || baseDetails === 'নবায়ন কমিশন') {
+            alert('কমিশন এন্ট্রি এডিট করা যাবে না। অনুগ্রহ করে মুছে আবার যোগ করুন।');
+            return; // এডিট না করে ফিরে যান, currentEditingId সেট না করুন
+        }
+
+        // --- Clear all fields first to avoid old data lingering ---
+        document.getElementById('office-expenses').selectedIndex = 0;
+        document.getElementById('amount-office').value = '';
+        document.getElementById('official-expenses').selectedIndex = 0;
+        document.getElementById('amount-official').value = '';
+        document.getElementById('development-staff').selectedIndex = 0;
+        document.getElementById('amount-staff').value = '';
+        document.getElementById('amount-first-year').value = '';
+        document.getElementById('bill-no-first-year').value = '';
+        document.getElementById('bill-date-first-year').value = '';
+        document.getElementById('amount-renewal').value = '';
+        document.getElementById('bill-no-renewal').value = '';
+        document.getElementById('bill-date-renewal').value = '';
+        // --- End of clear ---
+
+        currentEditingId = entry.id;
+
+        document.getElementById('expense-date').value = formatDateToDDMMYY(entry.date);
+        document.getElementById('payment-type').value = entry.paymentType;
+
+        document.getElementById('manpower-code').value = entry.manpowerCode || '';
+        document.getElementById('manpower-name').value = entry.manpowerName || '';
+
+        if (['প্রোডাকশন বোনাস', 'কর্মচারী বেতন (উন্নয়ন)', 'উৎসব বোনাস (উন্নয়ন)', 'উৎসাহ বোনাস (উন্নয়ন)', 'বৈশাখী ভাতা (উন্নয়ন)', 'ডাক্তারী পরীক্ষার ফি', 'লাঞ্চভাতা (উন্নয়ন)', 'বোনাস কমিশন'].includes(baseDetails)) {
+            document.getElementById('development-staff').value = baseDetails;
+            document.getElementById('amount-staff').value = entry.amount;
+        } else if (['কর্মচারী বেতন (অফিস)', 'উৎসব বোনাস (অফিস)', 'লাঞ্চভাতা (অফিস)', 'উৎসাহ বোনাস (অফিস)', 'বৈশাখী ভাতা (অফিস)', 'শ্রান্তি ও বিনোদন ভাতা', 'ক্যাশ এলাউন্স', 'ভ্রমণ ও যাতায়াত খরচ', 'চিকিৎসা খরচ (অফিস)'].includes(baseDetails)) {
+            document.getElementById('office-expenses').value = baseDetails;
+            document.getElementById('amount-office').value = entry.amount;
+        } else if (['পেটিক্যাশ', 'টেলিফোন বিল', 'মুদ্রণ ও মণিহারি খরচ', 'রাজস্ব টিকেট', 'ইন্টারনেট বিল', 'সাধারণ খরচ', 'পত্রিকা বিল', 'বিবিধ ব্যয়', 'আসবাবপত্র ক্রয়','ডাক ও তার খরচ', 'অফিস ভাড়া','দৈঃমঃভিঃ কর্মচারীর বিল'].includes(baseDetails)) {
+            document.getElementById('official-expenses').value = baseDetails;
+            document.getElementById('amount-official').value = entry.amount;
+        }
+
+        alert("এন্ট্রি লোড করা হয়েছে। পরিবর্তন করে 'সেভ' বা 'সেভ এন্ট্রি' বাটনে ক্লিক করুন।");
+        window.scrollTo(0, 0); // Scroll to top to see the form
+    }
+
+    function displayExpenseLog(searchTerm = '') {
+        const logList = document.getElementById('expense-log');
+        let expenses = JSON.parse(localStorage.getItem('pettyCashExpenses') || '[]');
+       
+        logList.innerHTML = '';
+       
+        if (expenses.length === 0) {
+            logList.innerHTML = '<li class="log-empty-message">কোনো এন্ট্রি সেভ করা হয়নি।</li>';
+            return;
+        }
+       
+        expenses.sort((a, b) => new Date(b.date) - new Date(a.date) || b.id - a.id);
+       
+        const normalizedSearch = normalizeDigits(searchTerm.toLowerCase());
+
+        let filteredExpenses = expenses.filter(entry => {
+            const dateStr = formatDateToDDMMYY(entry.date);
+            
+            let displayDetails = entry.details;
+            // No need to add manpower name here, it's already in entry.details if present
+            
+            let billInfo = '';
+            if (entry.billNo || entry.billDate) {
+                billInfo = ` | বিল: ${entry.billNo || ''}${entry.billDate ? ` (${formatDateToDDMMYY(entry.billDate)})` : ''}`;
+            }
+            const paymentTypeLabel = entry.paymentType === 'bank' ? 'ব্যাংক' : 'ক্যাশ';
+            const amountStr = entry.amount.toFixed(2) + ' টাকা';
+
+            // Construct a searchable string
+            const fullStr = [
+                dateStr,
+                displayDetails,
+                entry.manpowerCode,
+                entry.manpowerName,
+                billInfo,
+                paymentTypeLabel,
+                entry.amount.toString()
+            ].join(' ').toLowerCase();
+
+            const normalizedFullStr = normalizeDigits(fullStr);
+            
+            return normalizedFullStr.includes(normalizedSearch);
+        });
+       
+        if (filteredExpenses.length === 0) {
+            logList.innerHTML = '<li class="log-empty-message">কোনো মিল পাওয়া যায়নি।</li>';
+            return;
+        }
+
+        filteredExpenses.forEach((entry, index) => {
+            const serialNumber = index + 1;
+            const listItem = document.createElement('li');
+            const paymentTypeLabel = entry.paymentType === 'bank' ? 'ব্যাংক' : 'ক্যাশ';
+            let displayDetails = entry.details;
+           
+            let billInfo = '';
+            if (entry.billNo || entry.billDate) {
+                billInfo = ` | বিল: ${entry.billNo || ''}${entry.billDate ? ` (${formatDateToDDMMYY(entry.billDate)})` : ''}`;
+            }
+            listItem.innerHTML = `
+                <span class="log-details">
+                    <strong>${serialNumber}.</strong> ${formatDateToDDMMYY(entry.date)} | ${displayDetails}${billInfo} (${paymentTypeLabel}): <strong>${entry.amount.toFixed(2)} টাকা</strong>
+                </span>
+                <div>
+                    <button class="edit-btn" onclick="editEntry(${entry.id})">এডিট</button>
+                    <button class="remove-btn" onclick="removeEntry(${entry.id})">মুছুন</button>
+                </div>
+            `;
+            logList.appendChild(listItem);
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const today = new Date();
+        const dd = String(today.getDate()).padStart(2, '0');
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const yy = String(today.getFullYear() % 100).padStart(2, '0');
+        
+        const dateInput = document.getElementById('expense-date');
+        if (!dateInput.value) { // Only set if not already set (e.g., by flatpickr)
+             dateInput.value = `${dd}/${mm}/${yy}`;
+        }
+        
+        document.getElementById('payment-type').selectedIndex = 0;
+        displayExpenseLog();
+
+        document.getElementById('search-log').addEventListener('input', function() {
+            displayExpenseLog(this.value);
+        });
+
+        flatpickr("#expense-date", {
+            dateFormat: "d/m/y",
+            allowInput: true,
+            defaultDate: "today"
+        });
+        flatpickr("#bill-date-first-year", {
+            dateFormat: "d/m/y",
+            allowInput: true
+        });
+        flatpickr("#bill-date-renewal", {
+            dateFormat: "d/m/y",
+            allowInput: true
+        });
+
+        document.getElementById('manpower-code').addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault(); // Stop form submission
+                fetchManpowerName();
+            }
+        });
+    });
+    </script>
+</body>
+</html>

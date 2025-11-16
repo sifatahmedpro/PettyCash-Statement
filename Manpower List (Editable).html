@@ -1,0 +1,1593 @@
+<!DOCTYPE html>
+
+<html lang="bn">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Combined Manpower Lists - Final Dynamic Version</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+<style>
+@font-face {
+  font-family: 'Kalpurush';
+  src: url('https://cdn.jsdelivr.net/gh/fonts-bangla/kalpurush@master/Kalpurush.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'SolaimanLipi';
+  src: url('https://cdn.jsdelivr.net/gh/fonts-bangla/solaimanlipi@master/SolaimanLipi.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+</style>
+
+<style>
+
+/* Modern CSS Styling */
+
+* {
+
+margin: 0;
+
+padding: 0;
+
+box-sizing: border-box;
+
+}
+
+body {
+
+font-family: 'Kalpurush', 'SolaimanLipi', 'Hind Siliguri', 'Roboto', sans-serif;
+
+background-color: #f4f7f6;
+
+padding: 0;
+
+color: #333;
+
+}
+
+/* Main wrapper with flex layout for sidebar + content */
+
+.main-wrapper {
+
+max-width: 1400px;
+
+margin: 20px auto;
+
+box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+
+background: white;
+
+display: flex;
+
+min-height: 90vh;
+
+}
+
+/* Sidebar styles (copied from Data Entry) */
+
+.sidebar {
+
+width: 250px;
+
+background-color: #3A358E;
+
+color: white;
+
+padding: 20px 0;
+
+flex-shrink: 0;
+
+}
+
+.sidebar-header {
+    font-size: 22px;  /* Increased from 18px */
+    font-weight: bold;
+    text-align: center;
+    margin-bottom: 25px;  /* Increased from 20px */
+    padding-bottom: 15px;  /* Increased from 10px */
+    padding-top: 10px;  /* Added vertical padding */
+    padding-left: 10px;  /* Added horizontal padding */
+    padding-right: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+.sidebar ul {
+
+list-style: none;
+
+padding: 0;
+
+margin: 0;
+
+}
+
+.sidebar ul li a {
+
+display: block;
+
+padding: 12px 20px;
+
+color: white;
+
+text-decoration: none;
+
+transition: background-color 0.3s;
+
+}
+
+.sidebar ul li a:hover,
+
+.sidebar ul li a.active {
+
+background-color: #2c286e;
+
+border-left: 5px solid #1abc9c;
+
+}
+
+/* Main content area */
+
+.main-content {
+
+flex-grow: 1;
+
+padding: 20px;
+
+overflow-y: auto;
+
+}
+
+.container {
+
+background-color: #fff;
+
+padding: 30px;
+
+border-radius: 12px;
+
+box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1);
+
+position: relative;
+
+}
+
+h1 {
+
+color: white;
+
+background-color: #3A358E;
+
+text-align: center;
+
+margin-bottom: 25px;
+
+border: 3px solid #3A358E;
+
+padding: 15px 10px;
+
+font-weight: 600;
+
+border-radius: 8px;
+
+}
+
+/* Styling for Section Headers container (New) */
+
+.section-header-container {
+
+display: flex;
+
+justify-content: space-between;
+
+align-items: center;
+
+margin-top: 40px;
+
+padding: 8px 0;
+
+border-bottom: 2px solid #3A358E;
+
+}
+
+/* Styling for Section Headers */
+
+h2 {
+
+color: #333;
+
+margin: 0;
+
+padding: 0;
+
+border-bottom: none;
+
+font-weight: 500;
+
+}
+
+/* Highlight for the dynamic count */
+
+h2 span {
+
+font-weight: 700;
+
+color: #dc3545;
+
+margin-left: 5px;
+
+}
+
+/* Style for the new Add Manpower button */
+
+.add-manpower-btn {
+
+background-color: #28a745;
+
+color: white;
+
+border: none;
+
+padding: 8px 15px;
+
+border-radius: 5px;
+
+cursor: pointer;
+
+font-size: 14px;
+
+font-weight: 600;
+
+white-space: nowrap;
+
+transition: background-color 0.3s;
+
+font-family: 'Kalpurush', 'SolaimanLipi', 'Hind Siliguri', 'Roboto', sans-serif;
+
+}
+
+.add-manpower-btn:hover {
+
+background-color: #1e7e34;
+
+}
+
+/* Table Styling */
+
+table {
+
+width: 100%;
+
+border-collapse: collapse;
+
+margin-top: 20px;
+
+font-size: 15px;
+
+}
+
+th, td {
+
+padding: 10px 12px;
+
+text-align: left;
+
+border-bottom: 1px solid #ddd;
+
+transition: background-color 0.3s;
+
+}
+
+/* S.N. Column */
+
+th:first-child, td:first-child {
+
+width: 5%;
+
+text-align: center;
+
+}
+
+/* New: Action Column (last) */
+
+th:last-child, td:last-child {
+
+width: 8%;
+
+text-align: center;
+
+}
+
+th {
+
+background-color: #3A358E;
+
+color: white;
+
+font-weight: 700;
+
+text-transform: uppercase;
+
+}
+
+tr:nth-child(even) {
+
+background-color: #f9f9f9;
+
+}
+
+tr:hover td {
+
+background-color: #e6f2ff;
+
+}
+
+/* Styling for editable cells */
+
+td[contenteditable="true"] {
+
+cursor: pointer;
+
+border: 1px dashed transparent;
+
+}
+
+td[contenteditable="true"]:focus {
+
+outline: none;
+
+border: 1px dashed #007bff;
+
+background-color: #3A358E;
+
+}
+
+/* Status/Control Note */
+
+.control-panel {
+
+margin-top: 40px;
+
+text-align: center;
+
+padding: 15px;
+
+background-color: #e9ecef;
+
+border-radius: 5px;
+
+}
+
+.control-panel button {
+
+background-color: #3A358E;
+
+color: white;
+
+border: none;
+
+padding: 10px 20px;
+
+border-radius: 5px;
+
+cursor: pointer;
+
+font-size: 16px;
+
+font-weight: 600;
+
+transition: background-color 0.3s;
+
+font-family: 'Kalpurush', 'SolaimanLipi', 'Hind Siliguri', 'Roboto', sans-serif;
+}
+
+.control-panel button:hover {
+
+background-color: #2A2570;
+
+}
+
+/* New: Style for the Remove Button */
+
+.remove-btn {
+
+background-color: #dc3545;
+
+color: white;
+
+border: none;
+
+padding: 5px 10px;
+
+border-radius: 5px;
+
+cursor: pointer;
+
+font-size: 14px;
+
+transition: background-color 0.3s;
+
+font-family: 'Kalpurush', 'SolaimanLipi', 'Hind Siliguri', 'Roboto', sans-serif;
+
+}
+
+.remove-btn:hover {
+
+background-color: #c82333;
+
+}
+/* Clear All Button Styling */
+.clear-all-btn {
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 600;
+  transition: background-color 0.3s;
+  font-family: 'Kalpurush', 'SolaimanLipi', 'Hind Siliguri', 'Roboto', sans-serif;
+  margin-left: 10px;
+}
+
+.clear-all-btn:hover {
+  background-color: #c82333;
+}
+
+/* Search input styling */
+
+#searchInput {
+
+width: 100%;
+
+padding: 10px;
+
+margin-bottom: 20px;
+
+border: 1px solid #ccc;
+
+border-radius: 5px;
+
+font-family: 'Kalpurush', 'SolaimanLipi', 'Hind Siliguri', 'Roboto', sans-serif;
+
+}
+/* Restore All Button Styling */
+.restore-all-btn {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 600;
+  transition: background-color 0.3s;
+  font-family: 'Kalpurush', 'SolaimanLipi', 'Hind Siliguri', 'Roboto', sans-serif;
+  margin-left: 10px;
+}
+
+.restore-all-btn:hover {
+  background-color: #0056b3;
+}
+.header {
+  text-align: center;
+  padding: 20px 0;
+  background-color: #f4f7f6;
+}
+
+.logo {
+  max-width: 400px;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+</style>
+
+</head>
+
+<body>
+
+<div class="main-wrapper">
+
+<!-- Full left sidebar (copied from Data Entry) -->
+
+<nav class="sidebar">
+<a class="sidebar-header" href="data entry.html" style="text-decoration: none; display: block; color: white;">
+🏠 হোম
+</a>
+<ul>
+<li><a href="data entry.html">📝 ডেটা এন্ট্রি</a></li>
+<li><a href="commission_calculation.html">🧮 কমিশন গণনা</a></li>
+<li><a href="pettycash-statement.html">💰 পেটিক্যাশ স্টেটমেন্টসমূহ</a></li>
+<li><a href="Commission Statement.html">📊 কমিশন স্টেটমেন্ট</a></li>
+<li><a href="Manpower List (Editable).html" class="active">👥 জনবল ও খরচের খাত</a></li>
+<li><a href="archive.html">📦 আর্কাইভ</a></li>
+<li><a href="data management.html">⚙️ ডাটা ম্যানেজমেন্ট</a></li>
+<li><a href="edit-archive.html">✏️ আর্কাইভ সম্পাদনা</a></li>
+</ul>
+</nav>
+<!-- Main content area -->
+<div class="header">
+             
+<img src="Logo.png" alt="জীবন বীমা কর্পোরেশন Logo" class="logo">
+
+<div class="main-content">
+
+<div class="container">
+
+<h1>Manpower (জনবল ও খরচের খাত)</h1>
+
+<input type="text" id="searchInput" placeholder="নাম বা আইডি দিয়ে অনুসন্ধান করুন...">
+<!-- Expense Category Section (NEW) -->
+<div id="expenseSection" style="display: none;">
+  <div class="section-header-container">
+    <h2>খরচের খাত (Expense Category) - মোট খরচ: <span id="expense-count">0</span> টি</h2>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>ক্রমিক (S.N)</th>
+        <th>Code No. (খরচের সংক্ষিপ্ত কোড)</th>
+        <th>Expense (খরচের খাত)</th>
+        <th>Remarks (মন্তব্য)</th>
+        <th>Action (পদক্ষেপ)</th>
+      </tr>
+    </thead>
+    <tbody id="expense-body">
+    </tbody>
+  </table>
+
+  <hr>
+</div>
+<div class="control-panel">
+<p style="color: #6c757d; font-weight: 500;">কোনো কর্মী যোগ বা বাদ দেওয়ার পরে নিচের বাটনে ক্লিক করুন:</p>
+
+<!-- NEW: Form for adding manpower -->
+<div style="margin-bottom: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 8px; border: 2px solid #dee2e6;">
+  <h3 style="margin-bottom: 15px; color: #3A358E; font-size: 16px;">নতুন জনবল ও খরচের খাত যোগ করুন:</h3>
+  
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px;">
+  <div>
+    <label style="display: block; font-weight: 600; margin-bottom: 5px;">গ্রুপ নির্বাচন করুন:</label>
+    <select id="groupSelect" style="width: 100%; padding: 8px; border-radius: 5px; border: 1px solid #ccc; font-family: 'Kalpurush', 'SolaimanLipi', 'Hind Siliguri', 'Roboto', sans-serif;">
+      <option value="">-- নির্বাচন করুন --</option>
+      <option value="expense">খরচের খাত (Expense Category)</option>
+      <option value="jbc">জীবন বীমা কর্পোরেশন (JBC)</option>
+      <option value="dm">ডি / এম (D/M)</option>
+      <option value="do">ডিও (DO)</option>
+      <option value="agent">এজেন্ট (Agent)</option>
+    </select>
+  </div>
+  
+  <div>
+    <label style="display: block; font-weight: 600; margin-bottom: 5px;">আইডি:</label>
+    <input type="text" id="employeeId" placeholder="আইডি লিখুন" style="width: 100%; padding: 8px; border-radius: 5px; border: 1px solid #ccc; font-family: 'Kalpurush', 'SolaimanLipi', 'Hind Siliguri', 'Roboto', sans-serif;">
+  </div>
+  
+  <div>
+    <label style="display: block; font-weight: 600; margin-bottom: 5px;">নাম:</label>
+    <input type="text" id="employeeName" placeholder="নাম লিখুন" style="width: 100%; padding: 8px; border-radius: 5px; border: 1px solid #ccc; font-family: 'Kalpurush', 'SolaimanLipi', 'Hind Siliguri', 'Roboto', sans-serif;">
+  </div>
+  
+  <div>
+    <label style="display: block; font-weight: 600; margin-bottom: 5px;">পদবী:</label>
+    <input type="text" id="employeeDesignation" placeholder="পদবী লিখুন" style="width: 100%; padding: 8px; border-radius: 5px; border: 1px solid #ccc; font-family: 'Kalpurush', 'SolaimanLipi', 'Hind Siliguri', 'Roboto', sans-serif;">
+  </div>
+  
+  <div id="groupFieldContainer" style="display: none;">
+    <label style="display: block; font-weight: 600; margin-bottom: 5px;">গ্রুপ নম্বর:</label>
+    <input type="text" id="employeeGroup" placeholder="যেমন: ডি / এম - ১" style="width: 100%; padding: 8px; border-radius: 5px; border: 1px solid #ccc; font-family: 'Kalpurush', 'SolaimanLipi', 'Hind Siliguri', 'Roboto', sans-serif;">
+  </div>
+</div>
+  
+  <button onclick="addManpowerFromForm()" style="background-color: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: 600; font-size: 16px; font-family: 'Kalpurush', 'SolaimanLipi', 'Hind Siliguri', 'Roboto', sans-serif;">➕ যোগ করুন</button>
+</div>
+
+<button onclick="updateManpowerCount()">আপডেট সংখ্যা এবং ক্রমিক নম্বর</button>
+<button onclick="clearAllManpower()" class="clear-all-btn">সব মুছুন</button>
+<button onclick="restoreAllManpower()" class="restore-all-btn">সব ফিরিয়ে আনুন</button>
+</div>
+<div class="section-header-container">
+
+<h2>1. জীবন বীমা কর্পোরেশন (JBC) - মোট কর্মী: <span id="jbc-count">4</span> জন</h2>
+
+</div>
+
+<table>
+
+<thead>
+
+<tr>
+
+<th>ক্রমিক (S.N)</th>
+<th>Employee ID (কর্মচারী আইডি)</th>
+<th>Name (নাম)</th>
+<th>Designation (পদবী)</th>
+<th>Action (পদক্ষেপ)</th>
+</tr>
+
+</thead>
+
+<tbody id="jbc-body">
+
+<tr>
+
+<td>1</td>
+
+<td contenteditable="true">৪০০৯৯৯১৩</td>
+
+<td contenteditable="true">মোহাম্মদ সিফাত</td>
+
+<td contenteditable="true"></td>
+
+<td><button class="remove-btn" onclick="removeRow(this)">মুছুন</button></td>
+
+</tr>
+
+<tr>
+
+<td>2</td>
+
+<td contenteditable="true">৪০১০১৪১२</td>
+
+<td contenteditable="true">মুহম্মদ ফরিদুল ইসলাম</td>
+
+<td contenteditable="true"></td>
+
+<td><button class="remove-btn" onclick="removeRow(this)">মুছুন</button></td>
+
+</tr>
+
+<tr>
+
+<td>3</td>
+
+<td contenteditable="true">৪০००४८३५७</td>
+
+<td contenteditable="true">মোঃ আঃ হাই</td>
+
+<td contenteditable="true"></td>
+
+<td><button class="remove-btn" onclick="removeRow(this)">মুছুন</button></td>
+
+</tr>
+
+<tr>
+
+<td>4</td>
+
+<td contenteditable="true">४००६५५००</td>
+
+<td contenteditable="true">মোঃ সবুজ</td>
+
+<td contenteditable="true"></td>
+
+<td><button class="remove-btn" onclick="removeRow(this)">মুছুন</button></td>
+
+</tr>
+
+</tbody>
+
+</table>
+
+<hr>
+
+<div class="section-header-container">
+
+<h2>2. ডি / এম (D/M) List - মোট কর্মী: <span id="dm-count">13</span> জন</h2>
+
+</div>
+
+<table>
+
+<thead>
+
+<tr>
+
+<th>ক্রমিক (S.N)</th>
+
+<th>ID (আইডি)</th>
+
+<th>Name (নাম)</th>
+
+<th>Designation (পদবী)</th>
+
+<th>Remarks (মন্তব্য)</th>
+
+<th>Action (পদক্ষেপ)</th>
+
+</tr>
+
+</thead>
+
+<tbody id="dm-body">
+
+<tr>
+
+<td>1</td>
+
+<td contenteditable="true">२५०४</td>
+
+<td contenteditable="true">হাসমত আলী</td>
+
+<td contenteditable="true">  ডি / এম - ১</td>
+
+<td contenteditable="true"></td>
+
+<td><button class="remove-btn" onclick="removeRow(this)">মুছুন</button></td>
+
+</tr>
+
+<tr>
+
+<td>2</td>
+
+<td contenteditable="true">२५२९</td>
+
+<td contenteditable="true">আনিছুর রহমান</td>
+
+<td contenteditable="true">ডি / এম - ३</td>
+
+<td contenteditable="true"></td>
+
+<td><button class="remove-btn" onclick="removeRow(this)">মুছুন</button></td>
+
+</tr>
+
+<tr>
+
+<td>3</td>
+
+<td contenteditable="true">२५५६</td>
+
+<td contenteditable="true"> মাহবুবুর রহমান</td>
+
+<td contenteditable="true">ডি / এম - १</td>
+
+<td contenteditable="true"></td>
+
+<td><button class="remove-btn" onclick="removeRow(this)">মুছুন</button></td>
+
+</tr>
+
+<tr>
+
+<td>4</td>
+
+<td contenteditable="true">२५७९</td>
+
+<td contenteditable="true">মোঃ হানিফ</td>
+
+<td contenteditable="true">ডি / এম - ३</td>
+
+<td contenteditable="true"></td>
+
+<td><button class="remove-btn" onclick="removeRow(this)">মুছুন</button></td>
+
+</tr>
+
+<tr>
+
+<td>5</td>
+
+<td contenteditable="true">२५८७</td>
+
+<td contenteditable="true">আলাউদ্দিন আহমেদ</td>
+
+<td contenteditable="true">ডি / এম - १</td>
+
+<td contenteditable="true"></td>
+
+<td><button class="remove-btn" onclick="removeRow(this)">মুছুন</button></td>
+
+</tr>
+
+<tr>
+
+<td>6</td>
+
+<td contenteditable="true">२५९९</td>
+
+<td contenteditable="true">আব্দুর রহমান</td>
+
+<td contenteditable="true">ডি / এম - १</td>
+
+<td contenteditable="true"></td>
+
+<td><button class="remove-btn" onclick="removeRow(this)">মুছুন</button></td>
+
+</tr>
+
+<tr>
+
+<td>7</td>
+
+<td contenteditable="true">२६२४</td>
+
+<td contenteditable="true">শাহ আলম</td>
+
+<td contenteditable="true">ডি / এম - ३</td>
+
+<td contenteditable="true"></td>
+
+<td><button class="remove-btn" onclick="removeRow(this)">মুছুন</button></td>
+
+</tr>
+
+<tr>
+
+<td>8</td>
+
+<td contenteditable="true">२६७४</td>
+
+<td contenteditable="true">শফিকুল ইসলাম</td>
+
+<td contenteditable="true">ডি / এম - १</td>
+
+<td contenteditable="true"></td>
+
+<td><button class="remove-btn" onclick="removeRow(this)">মুছুন</button></td>
+
+</tr>
+
+<tr>
+
+<td>9</td>
+
+<td contenteditable="true">२६७७</td>
+
+<td contenteditable="true">অরুণ চন্দ্র দাস</td>
+
+<td contenteditable="true">ডি / এম - ३</td>
+
+<td contenteditable="true"></td>
+
+<td><button class="remove-btn" onclick="removeRow(this)">মুছুন</button></td>
+
+</tr>
+
+<tr>
+
+<td>10</td>
+
+<td contenteditable="true">२६९५</td>
+
+<td contenteditable="true">আনেয়ার হোসেন</td>
+
+<td contenteditable="true">ডি / এম - ३</td>
+
+<td contenteditable="true"></td>
+
+<td><button class="remove-btn" onclick="removeRow(this)">মুছুন</button></td>
+
+</tr>
+
+<tr>
+
+<td>11</td>
+
+<td contenteditable="true">४२०९</td>
+
+<td contenteditable="true">আব্দুল আউয়াল</td>
+
+<td contenteditable="true">ডি / এম - ३</td>
+
+<td contenteditable="true"></td>
+
+<td><button class="remove-btn" onclick="removeRow(this)">মুছুন</button></td>
+
+</tr>
+
+<tr>
+
+<td>12</td>
+
+<td contenteditable="true">४३१८</td>
+
+<td contenteditable="true">তামান্না আক্তার</td>
+
+<td contenteditable="true">ডি / এম - १</td>
+
+<td contenteditable="true"></td>
+
+<td><button class="remove-btn" onclick="removeRow(this)">মুছুন</button></td>
+
+</tr>
+
+<tr>
+
+<td>13</td>
+
+<td contenteditable="true">४९३४</td>
+
+<td contenteditable="true">আরিফুল ইসলাম</td>
+
+<td contenteditable="true">ডি / এম - ३</td>
+
+<td contenteditable="true"></td>
+
+<td><button class="remove-btn" onclick="removeRow(this)">মুছুন</button></td>
+
+</tr>
+
+</tbody>
+
+</table>
+
+<hr>
+
+<div class="section-header-container">
+
+<h2>3. ডিও (DO) List - মোট কর্মী: <span id="do-count">0</span> জন</h2>
+
+</div>
+
+<table>
+
+<thead>
+
+<tr>
+
+<th>ক্রমিক (S.N)</th>
+
+<th>ID (আইডি)</th>
+
+<th>Name (নাম)</th>
+
+<th>Designation (পদবী)</th>
+
+<th>Remarks (মন্তব্য)</th>
+
+<th>Action (পদক্ষেপ)</th>
+
+</tr>
+
+</thead>
+
+<tbody id="do-body">
+
+</tbody>
+
+</table>
+
+<hr>
+
+<div class="section-header-container">
+
+<h2>4. এজেন্ট (Agent) List - মোট কর্মী: <span id="agent-count">0</span> জন</h2>
+
+</div>
+
+<table>
+
+<thead>
+
+<tr>
+
+<th>ক্রমিক (S.N)</th>
+
+<th>ID (আইডি)</th>
+
+<th>Name (নাম)</th>
+
+<th>Branch (শাখা নং)</th>
+
+<th>Remarks (মন্তব্য)</th>
+
+<th>Action (পদক্ষেপ)</th>
+
+</tr>
+
+</thead>
+
+<tbody id="agent-body">
+
+</tbody>
+
+</table>
+
+</div>
+
+</div>
+
+</div>
+
+<script>
+
+// Function to remove a row
+
+function removeRow(btn) {
+
+if (confirm('আপনি কি এই কর্মী মুছে ফেলতে চান?')) {
+
+const row = btn.closest('tr');
+
+row.remove();
+
+updateManpowerCount();
+
+}
+
+}
+
+// Function to add a new manpower row
+
+function addManpower(tbodyId, columnCount, defaultGroup = '') {
+
+const tbody = document.getElementById(tbodyId);
+
+const newRow = tbody.insertRow();
+
+newRow.insertCell().textContent = '...';
+
+let idCell = newRow.insertCell();
+
+idCell.contentEditable = 'true';
+
+idCell.textContent = '';
+
+let nameCell = newRow.insertCell();
+
+nameCell.contentEditable = 'true';
+
+nameCell.textContent = '';
+
+if (columnCount === 5) {
+
+let groupCell = newRow.insertCell();
+
+groupCell.contentEditable = 'true';
+
+groupCell.textContent = defaultGroup;
+
+}
+
+let remarksCell = newRow.insertCell();
+
+remarksCell.contentEditable = 'true';
+
+remarksCell.textContent = '';
+
+let actionCell = newRow.insertCell();
+
+actionCell.innerHTML = '<button class="remove-btn" onclick="removeRow(this)">মুছুন</button>';
+
+updateManpowerCount();
+
+newRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+}
+
+// Function to update S.N. and counts
+
+function updateManpowerCount() {
+  const jbcBody = document.getElementById('jbc-body');
+  const jbcCount = jbcBody.getElementsByTagName('tr').length;
+  document.getElementById('jbc-count').textContent = jbcCount;
+  Array.from(jbcBody.rows).forEach((row, index) => {
+    row.cells[0].textContent = index + 1;
+  });
+
+  const dmBody = document.getElementById('dm-body');
+  const dmCount = dmBody.getElementsByTagName('tr').length;
+  document.getElementById('dm-count').textContent = dmCount;
+  Array.from(dmBody.rows).forEach((row, index) => {
+    row.cells[0].textContent = index + 1;
+  });
+
+  const doBody = document.getElementById('do-body');
+  const doCount = doBody.getElementsByTagName('tr').length;
+  document.getElementById('do-count').textContent = doCount;
+  Array.from(doBody.rows).forEach((row, index) => {
+    row.cells[0].textContent = index + 1;
+  });
+
+  const expenseBody = document.getElementById('expense-body');
+  const expenseCount = expenseBody ? expenseBody.getElementsByTagName('tr').length : 0;
+  if (document.getElementById('expense-count')) {
+    document.getElementById('expense-count').textContent = expenseCount;
+  }
+  if (expenseBody) {
+    Array.from(expenseBody.rows).forEach((row, index) => {
+      row.cells[0].textContent = index + 1;
+    });
+  }
+
+  const agentBody = document.getElementById('agent-body');
+  const agentCount = agentBody ? agentBody.getElementsByTagName('tr').length : 0;
+  if (document.getElementById('agent-count')) {
+    document.getElementById('agent-count').textContent = agentCount;
+  }
+  if (agentBody) {
+    Array.from(agentBody.rows).forEach((row, index) => {
+      row.cells[0].textContent = index + 1;
+    });
+  }
+
+  saveManpowerData();
+  
+  // Show confirmation message
+  let message = `ডেটা সফলভাবে সংরক্ষিত হয়েছে!\n\n`;
+  message += `JBC: ${jbcCount} জন\n`;
+  message += `D/M: ${dmCount} জন\n`;
+  message += `DO: ${doCount} জন\n`;
+  message += `এজেন্ট: ${agentCount} জন\n`;
+  message += `খরচের খাত: ${expenseCount} টি`;
+  
+  console.log('Data saved:', {jbc: jbcCount, dm: dmCount, do: doCount, agent: agentCount, expense: expenseCount});
+}
+// Function to get table data
+
+function getTableData(tbodyId, fieldCount) {
+
+const tbody = document.getElementById(tbodyId);
+
+if (!tbody) return [];
+
+return Array.from(tbody.rows).map(row => {
+
+const obj = {
+
+id: row.cells[1].textContent.trim(),
+
+name: row.cells[2].textContent.trim()
+
+};
+
+if (fieldCount === 4) {
+
+obj.remarks = row.cells[3].textContent.trim();
+
+} else {
+
+obj.group = row.cells[3].textContent.trim();
+
+obj.remarks = row.cells[4].textContent.trim();
+
+}
+
+return obj;
+
+});
+
+}
+
+// Function to save manpower data
+
+function saveManpowerData() {
+  const data = {
+    expense: getTableData('expense-body', 4),
+    jbc: getTableData('jbc-body', 4),
+    dm: getTableData('dm-body', 5),
+    do: getTableData('do-body', 5),
+    agent: getTableData('agent-body', 5)
+  };
+  
+  localStorage.setItem('manpowerTables', JSON.stringify(data));
+  console.log('manpowerTables saved:', data);
+
+  const expenseList = data.expense.map(item => ({
+    code: item.id,
+    name: item.name
+  }));
+  
+  if (expenseList.length > 0) {
+    localStorage.setItem('expenseList', JSON.stringify(expenseList));
+    console.log('✅ expenseList saved with', expenseList.length, 'items:', expenseList);
+  }
+
+  const flatManpower = [
+    ...data.jbc.map(item => ({code: item.id, name: item.name})),
+    ...data.dm.map(item => ({code: item.id, name: item.name})),
+    ...data.do.map(item => ({code: item.id, name: item.name})),
+    ...data.agent.map(item => ({code: item.id, name: item.name}))
+  ];
+
+  localStorage.setItem('manpowerList', JSON.stringify(flatManpower));
+  console.log('manpowerList saved:', flatManpower);
+}// Function to populate table
+
+function populateTable(tbodyId, items, hasGroup = false) {
+
+const tbody = document.getElementById(tbodyId);
+
+if (!tbody) return;
+
+tbody.innerHTML = '';
+
+items.forEach(item => {
+
+const row = tbody.insertRow();
+
+row.insertCell().textContent = '...';
+
+const idCell = row.insertCell();
+
+idCell.contentEditable = true;
+
+idCell.textContent = item.id || '';
+
+const nameCell = row.insertCell();
+
+nameCell.contentEditable = true;
+
+nameCell.textContent = item.name || '';
+
+if (hasGroup) {
+
+const groupCell = row.insertCell();
+
+groupCell.contentEditable = true;
+
+groupCell.textContent = item.group || '';
+
+}
+
+const remarksCell = row.insertCell();
+
+remarksCell.contentEditable = true;
+
+remarksCell.textContent = item.remarks || '';
+
+const actionCell = row.insertCell();
+
+actionCell.innerHTML = '<button class="remove-btn" onclick="removeRow(this)">মুছুন</button>';
+
+});
+
+}
+
+// Load manpower data on page load
+
+// Load manpower data on page load
+function loadManpowerData() {
+  const savedData = localStorage.getItem('manpowerTables');
+  
+  if (savedData) {
+    const data = JSON.parse(savedData);
+    
+    console.log('Loading data:', data); // Debug log
+    
+    // Load all tables
+    populateTable('expense-body', data.expense || [], false);
+    populateTable('jbc-body', data.jbc || [], false);
+    populateTable('dm-body', data.dm || [], true);
+    populateTable('do-body', data.do || [], true);
+    populateTable('agent-body', data.agent || [], true);
+    
+    // Show expense section if there's data
+    const expenseBody = document.getElementById('expense-body');
+    const expenseSection = document.getElementById('expenseSection');
+    if (expenseBody && expenseBody.getElementsByTagName('tr').length > 0) {
+      expenseSection.style.display = 'block';
+    }
+    
+    // Save expense list to localStorage
+    const expenseList = (data.expense || []).map(item => ({
+      code: item.id,
+      name: item.name
+    }));
+    if (expenseList.length > 0) {
+      localStorage.setItem('expenseList', JSON.stringify(expenseList));
+      console.log('Expense list set during load:', expenseList); // Debug log
+    }
+  }
+  
+  updateManpowerCount();
+}// Function to normalize Bengali and Devanagari digits to English digits
+function normalizeDigits(str) {
+  const digitsToEnglish = {
+    // Bengali Digits
+    '০': '0', '১': '1', '২': '2', '৩': '3', '৪': '4',
+    '৫': '5', '৬': '6', '৭': '7', '৮': '8', '৯': '9',
+    // Devanagari Digits
+    '०': '0', '१': '1', '२': '2', '३': '3', '४': '4',
+    '५': '5', '६': '6', '७': '7', '८': '8', '९': '9'
+  };
+  
+  // New regex matches BOTH Bengali [০-৯] and Devanagari [०-९] digits
+  return str.replace(/[০-৯०-९]/g, digit => digitsToEnglish[digit] || digit);
+}
+// Show/hide group field based on selection
+document.addEventListener('DOMContentLoaded', function() {
+  loadManpowerData();
+  
+  // Add event listener for group selection
+  const groupSelect = document.getElementById('groupSelect');
+  if (groupSelect) {
+    groupSelect.addEventListener('change', function() {
+      const groupFieldContainer = document.getElementById('groupFieldContainer');
+      const selectedValue = this.value;
+      
+      // Show group field for DM, DO, and Agent
+      if (selectedValue === 'dm' || selectedValue === 'do' || selectedValue === 'agent') {
+        groupFieldContainer.style.display = 'block';
+        
+        // Set default value based on selection
+        const groupInput = document.getElementById('employeeGroup');
+        if (selectedValue === 'dm') {
+          groupInput.value = 'ডি / এম - ১';
+        } else if (selectedValue === 'do') {
+          groupInput.value = 'ডিও - ১';
+        } else if (selectedValue === 'agent') {
+          groupInput.value = 'এজেন্ট - ১';
+        }
+      } else {
+        groupFieldContainer.style.display = 'none';
+      }
+    });
+  }
+  
+  // Search functionality
+  document.getElementById('searchInput').addEventListener('keyup', function() {
+    var inputLower = this.value.toLowerCase();
+    var normalizedInput = normalizeDigits(inputLower);
+    
+    ['expense-body', 'jbc-body', 'dm-body', 'do-body', 'agent-body'].forEach(id => {
+      var tbody = document.getElementById(id);
+      if (tbody) {
+        Array.from(tbody.rows).forEach(row => {
+          var idTextLower = row.cells[1].textContent.toLowerCase();
+          var normalizedId = normalizeDigits(idTextLower);
+          var nameTextLower = row.cells[2].textContent.toLowerCase();
+          
+          if (normalizedId.includes(normalizedInput) || nameTextLower.includes(inputLower)) {
+            row.style.display = '';
+          } else {
+            row.style.display = 'none';
+          }
+        });
+      }
+    });
+  });
+});
+
+// Function to add manpower from form
+
+// Auto-save on edit (blur)
+// Clear all manpower from all groups
+function clearAllManpower() {
+  if (!confirm('সব গ্রুপ থেকে সমস্ত জনবল ও খরচের খাত মুছে ফেলতে চান?')) return;
+
+  // Save backup before clearing
+  saveBackupData();
+
+  const tbodies = ['expense-body', 'jbc-body', 'dm-body', 'do-body', 'agent-body'];
+  tbodies.forEach(id => {
+    const tbody = document.getElementById(id);
+    if (tbody) tbody.innerHTML = '';
+  });
+
+  // Clear saved data so it doesn't repopulate after refresh
+  localStorage.removeItem('manpowerTables');
+  localStorage.removeItem('manpowerList');
+
+  // Save empty state and update counts/S.N.
+  saveManpowerData();
+  updateManpowerCount();
+}// Save backup before clearing
+function saveBackupData() {
+ const data = {
+  expense: getTableData('expense-body', 4),
+  jbc: getTableData('jbc-body', 4),
+  dm: getTableData('dm-body', 5),
+  do: getTableData('do-body', 5),
+  agent: getTableData('agent-body', 5)
+};
+  localStorage.setItem('manpowerBackup', JSON.stringify(data));
+}
+
+// Restore all manpower from backup
+function restoreAllManpower() {
+  const backupData = localStorage.getItem('manpowerBackup');
+  
+  if (!backupData) {
+    alert('কোনো ব্যাকআপ ডেটা পাওয়া যায়নি।');
+    return;
+  }
+  
+  if (!confirm('সব মুছে ফেলা ডেটা ফিরিয়ে আনতে চান?')) return;
+  
+  const data = JSON.parse(backupData);
+  
+  populateTable('expense-body', data.expense || [], false);
+  populateTable('jbc-body', data.jbc || [], false);
+  populateTable('dm-body', data.dm || [], true);
+  populateTable('do-body', data.do || [], true);
+  populateTable('agent-body', data.agent || [], true);
+  
+  updateManpowerCount();
+  alert('সমস্ত ডেটা সফলভাবে পুনরুদ্ধার করা হয়েছে।');
+}
+
+document.addEventListener('blur', function(e) {
+
+if (e.target.contentEditable === 'true') {
+
+saveManpowerData();
+
+}
+
+}, true);
+
+
+// Function to add manpower from form
+// Function to add manpower from form
+function addManpowerFromForm() {
+  const groupSelect = document.getElementById('groupSelect');
+  const employeeId = document.getElementById('employeeId');
+  const employeeName = document.getElementById('employeeName');
+  const employeeDesignation = document.getElementById('employeeDesignation');
+  const employeeGroup = document.getElementById('employeeGroup');
+  
+  const selectedGroup = groupSelect.value;
+  const id = employeeId.value.trim();
+  const name = employeeName.value.trim();
+  const designation = employeeDesignation.value.trim();
+  const group = employeeGroup.value.trim();
+  
+  // Validation
+  if (!selectedGroup) {
+    alert('অনুগ্রহ করে একটি গ্রুপ নির্বাচন করুন।');
+    return;
+  }
+  
+  if (!id) {
+    alert('অনুগ্রহ করে আইডি লিখুন।');
+    return;
+  }
+  
+  if (!name) {
+    alert('অনুগ্রহ করে নাম লিখুন।');
+    return;
+  }
+  
+  // Create new row based on selected group
+  let tbody;
+  const newRow = document.createElement('tr');
+  
+  switch(selectedGroup) {
+    case 'expense':
+      tbody = document.getElementById('expense-body');
+      // S.N, Code No., Expense, Remarks, Action
+      newRow.innerHTML = `
+        <td>...</td>
+        <td contenteditable="true">${id}</td>
+        <td contenteditable="true">${name}</td>
+        <td contenteditable="true">${designation}</td>
+        <td><button class="remove-btn" onclick="removeRow(this)">মুছুন</button></td>
+      `;
+      // Show expense section
+      document.getElementById('expenseSection').style.display = 'block';
+      break;
+      
+    case 'jbc':
+      tbody = document.getElementById('jbc-body');
+      // S.N, Employee ID, Name, Designation, Action
+      newRow.innerHTML = `
+        <td>...</td>
+        <td contenteditable="true">${id}</td>
+        <td contenteditable="true">${name}</td>
+        <td contenteditable="true">${designation}</td>
+        <td><button class="remove-btn" onclick="removeRow(this)">মুছুন</button></td>
+      `;
+      break;
+      
+    case 'dm':
+      tbody = document.getElementById('dm-body');
+      if (!group) {
+        alert('অনুগ্রহ করে গ্রুপ নম্বর লিখুন।');
+        return;
+      }
+      // S.N, ID, Name, Designation, Remarks, Action
+      newRow.innerHTML = `
+        <td>...</td>
+        <td contenteditable="true">${id}</td>
+        <td contenteditable="true">${name}</td>
+        <td contenteditable="true">${group}</td>
+        <td contenteditable="true">${designation}</td>
+        <td><button class="remove-btn" onclick="removeRow(this)">মুছুন</button></td>
+      `;
+      break;
+      
+    case 'do':
+      tbody = document.getElementById('do-body');
+      if (!group) {
+        alert('অনুগ্রহ করে গ্রুপ নম্বর লিখুন।');
+        return;
+      }
+      // S.N, ID, Name, Designation, Remarks, Action
+      newRow.innerHTML = `
+        <td>...</td>
+        <td contenteditable="true">${id}</td>
+        <td contenteditable="true">${name}</td>
+        <td contenteditable="true">${group}</td>
+        <td contenteditable="true">${designation}</td>
+        <td><button class="remove-btn" onclick="removeRow(this)">মুছুন</button></td>
+      `;
+      break;
+      
+    case 'agent':
+      tbody = document.getElementById('agent-body');
+      if (!group) {
+        alert('অনুগ্রহ করে গ্রুপ নম্বর লিখুন।');
+        return;
+      }
+      // S.N, ID, Name, Branch, Remarks, Action
+      newRow.innerHTML = `
+        <td>...</td>
+        <td contenteditable="true">${id}</td>
+        <td contenteditable="true">${name}</td>
+        <td contenteditable="true">${group}</td>
+        <td contenteditable="true">${designation}</td>
+        <td><button class="remove-btn" onclick="removeRow(this)">মুছুন</button></td>
+      `;
+      break;
+      
+    default:
+      alert('অমান্য গ্রুপ নির্বাচন।');
+      return;
+  }
+  
+  tbody.appendChild(newRow);
+  
+  // Clear form
+  employeeId.value = '';
+  employeeName.value = '';
+  employeeDesignation.value = '';
+  employeeGroup.value = '';
+  groupSelect.value = '';
+  document.getElementById('groupFieldContainer').style.display = 'none';
+  
+  // Update counts and save
+  updateManpowerCount();
+  newRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  
+  alert('জনবল ও খরচের খাত সফলভাবে যোগ করা হয়েছে!');
+}
+// Function to add manpower from dropdown
+function addManpowerFromDropdown() {
+  const select = document.getElementById('groupSelect');
+  const selectedValue = select.value;
+  
+  if (!selectedValue) {
+    alert('অনুগ্রহ করে একটি গ্রুপ নির্বাচন করুন।');
+    return;
+  }
+  
+  switch(selectedValue) {
+    case 'expense':
+      addManpower('expense-body', 4);
+      break;
+case 'jbc':
+      addManpower('jbc-body', 4);
+      break;
+    case 'dm':
+      addManpower('dm-body', 5, 'ডি / এম - ?');
+      break;
+    case 'do':
+      addManpower('do-body', 5, 'ডিও - ?');
+      break;
+    case 'agent':
+      addManpower('agent-body', 5, 'এজেন্ট - ?');
+      break;
+  }
+  
+  // Reset dropdown after adding
+  select.value = '';
+}
+</script>
+
+</body>
+
+</html>

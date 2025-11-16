@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>পেটিকাশ স্টেটমেন্ট লগ ইন ২০২৫</title>
+    <link rel="stylesheet" href="https://fonts.maateen.me/kalpurush/font.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Kalpurush', 'SolaimanLipi', Arial, sans-serif;
+            background: linear-gradient(135deg, #3A358E 0%, #2c286e 50%, #1abc9c 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Animated background elements */
+        .bg-decoration {
+            position: absolute;
+            border-radius: 50%;
+            opacity: 0.1;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        .bg-circle-1 {
+            width: 300px;
+            height: 300px;
+            background: white;
+            top: -100px;
+            left: -100px;
+            animation-delay: 0s;
+        }
+
+        .bg-circle-2 {
+            width: 200px;
+            height: 200px;
+            background: #1abc9c;
+            bottom: -50px;
+            right: -50px;
+            animation-delay: 2s;
+        }
+
+        .bg-circle-3 {
+            width: 250px;
+            height: 250px;
+            background: white;
+            top: 50%;
+            right: -150px;
+            animation-delay: 4s;
+        }
+
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0px);
+            }
+            50% {
+                transform: translateY(30px);
+            }
+        }
+
+        .login-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 50px 40px;
+            width: 100%;
+            max-width: 420px;
+            z-index: 10;
+            position: relative;
+            animation: slideUp 0.6s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .logo-section {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo-image {
+            max-width: 280px;
+            width: 100%;
+            height: auto;
+            margin: 0 auto 20px;
+            display: block;
+        }
+
+        .header-title {
+            font-size: 22px;
+            font-weight: bold;
+            color: #3A358E;
+            margin-bottom: 8px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #3A358E;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-family: 'Kalpurush', 'SolaimanLipi', Arial, sans-serif;
+            font-size: 13px;
+            transition: all 0.3s ease;
+            background-color: #f9f9f9;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #1abc9c;
+            background-color: #fff;
+            box-shadow: 0 0 0 3px rgba(26, 188, 156, 0.1);
+        }
+
+        .form-group input::placeholder {
+            color: #999;
+            font-size: 12px;
+        }
+
+        .password-toggle {
+            position: absolute;
+            right: 15px;
+            top: 40px;
+            cursor: pointer;
+            font-size: 20px;
+            color: #666;
+            transition: color 0.3s ease;
+            user-select: none;
+        }
+
+        .password-toggle:hover {
+            color: #1abc9c;
+        }
+
+        .remember-section {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 25px;
+            font-size: 12px;
+        }
+
+        .remember-section input[type="checkbox"] {
+            cursor: pointer;
+            accent-color: #1abc9c;
+        }
+
+        .remember-section label {
+            cursor: pointer;
+            color: #666;
+            margin-left: 5px;
+        }
+
+        .forgot-password {
+            color: #1abc9c;
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.3s ease;
+        }
+
+        .forgot-password:hover {
+            color: #16a085;
+            text-decoration: underline;
+        }
+
+        .btn-login {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #3A358E, #2c286e);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 4px 15px rgba(58, 53, 142, 0.3);
+            font-family: 'Kalpurush', 'SolaimanLipi', Arial, sans-serif;
+        }
+
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(58, 53, 142, 0.4);
+        }
+
+        .btn-login:active {
+            transform: translateY(0);
+        }
+
+        .alert-box {
+            display: none;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 12px;
+            animation: slideDown 0.3s ease;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .alert-error {
+            background-color: #ffe6e6;
+            color: #d32f2f;
+            border-left: 4px solid #d32f2f;
+        }
+
+        .alert-success {
+            background-color: #e6ffe6;
+            color: #388e3c;
+            border-left: 4px solid #388e3c;
+        }
+
+        @media (max-width: 600px) {
+            .login-container {
+                padding: 30px 20px;
+                margin: 20px;
+            }
+
+            .header-title {
+                font-size: 18px;
+            }
+
+            .logo-image {
+                max-width: 150px;
+            }
+        }
+
+        input, button {
+            font-family: 'Kalpurush', 'SolaimanLipi', Arial, sans-serif !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-decoration bg-circle-1"></div>
+    <div class="bg-decoration bg-circle-2"></div>
+    <div class="bg-decoration bg-circle-3"></div>
+
+    <div class="login-container">
+        <div class="logo-section">
+            <img src="Logo.png" alt="জীবন বীমা কর্পোরেশন Logo" class="logo-image" onerror="this.style.display='none'">
+            <h1 class="header-title">পেটিক্যাশ সিস্টেম</h1>
+        </div>
+
+        <div id="alert-box" class="alert-box"></div>
+
+        <form id="login-form">
+            <div class="form-group">
+                <label for="username">ব্যবহারকারী নাম</label>
+                <input 
+                    type="text" 
+                    id="username" 
+                    name="username" 
+                    placeholder="আপনার ব্যবহারকারী নাম প্রবেশ করুন" 
+                    required
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="password">পাসওয়ার্ড</label>
+                <input 
+                    type="password" 
+                    id="password" 
+                    name="password" 
+                    placeholder="আপনার পাসওয়ার্ড প্রবেশ করুন" 
+                    required
+                >
+                <span class="password-toggle" id="password-toggle" onclick="togglePassword()">👁️</span>
+            </div>
+
+            <div class="remember-section">
+                <div>
+                    <input type="checkbox" id="remember" name="remember">
+                    <label for="remember">আমাকে মনে রাখুন</label>
+                </div>
+                <a href="#" class="forgot-password">পাসওয়ার্ড ভুলে গেছেন?</a>
+            </div>
+
+            <button type="submit" class="btn-login">লগইন করুন</button>
+        </form>
+    </div>
+
+    <script>
+        document.getElementById('login-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value.trim();
+            const alertBox = document.getElementById('alert-box');
+
+            // Simple validation
+            if (!username || !password) {
+                showAlert('দয়া করে ব্যবহারকারী নাম এবং পাসওয়ার্ড উভয়ই প্রবেশ করুন।', 'error');
+                return;
+            }
+
+            if (username.length < 3) {
+                showAlert('ব্যবহারকারী নাম কমপক্ষে ৩ অক্ষর হতে হবে।', 'error');
+                return;
+            }
+
+            if (password.length < 6) {
+                showAlert('পাসওয়ার্ড কমপক্ষে ৬ অক্ষর হতে হবে।', 'error');
+                return;
+            }
+
+            // Simulate login (replace with actual authentication)
+            showAlert('লগইন সফল হয়েছে! আপনি পুনর্নির্দেশিত হচ্ছেন...', 'success');
+            
+            // Redirect after 1.5 seconds
+            setTimeout(() => {
+                window.location.href = 'data entry.html';
+            }, 1500);
+        });
+
+        function showAlert(message, type) {
+            const alertBox = document.getElementById('alert-box');
+            alertBox.textContent = message;
+            alertBox.className = 'alert-box alert-' + type;
+            alertBox.style.display = 'block';
+
+            // Auto-hide error alerts after 4 seconds
+            if (type === 'error') {
+                setTimeout(() => {
+                    alertBox.style.display = 'none';
+                }, 4000);
+            }
+        }
+
+        function togglePassword() {
+            const passwordInput = document.getElementById('password');
+            const passwordToggle = document.getElementById('password-toggle');
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                passwordToggle.textContent = '🙈';
+            } else {
+                passwordInput.type = 'password';
+                passwordToggle.textContent = '👁️';
+            }
+        }
+
+        // Remember me functionality
+        document.getElementById('remember').addEventListener('change', function() {
+            if (this.checked) {
+                localStorage.setItem('rememberMe', 'true');
+            } else {
+                localStorage.removeItem('rememberMe');
+            }
+        });
+
+        // Load remembered username on page load
+        window.addEventListener('load', function() {
+            const rememberMe = localStorage.getItem('rememberMe');
+            if (rememberMe === 'true') {
+                document.getElementById('remember').checked = true;
+            }
+        });
+    </script>
+</body>
+</html>

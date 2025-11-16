@@ -1,0 +1,434 @@
+<!-- New data management.html page -->
+
+<!DOCTYPE html>
+
+<html lang="bn">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>ডাটা ম্যানেজমেন্ট</title>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+
+<style>
+
+/* Reuse styles from data entry.html or archive.html for consistency */
+
+* {
+
+margin: 0;
+
+padding: 0;
+
+box-sizing: border-box;
+
+}
+
+body {
+
+font-family: 'Kalpurush', 'SolaimanLipi', Arial, sans-serif;
+
+background: #f5f5f5;
+
+margin: 0;
+
+}
+
+.main-wrapper {
+
+max-width: 1400px;
+
+margin: 20px auto;
+
+box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+
+background: white;
+
+display: flex;
+
+min-height: 90vh;
+
+}
+
+.sidebar {
+
+width: 250px;
+
+background-color: #3A358E;
+
+color: white;
+
+padding: 20px 0;
+
+flex-shrink: 0;
+
+}
+
+.sidebar-header {
+    font-size: 22px;  /* Increased from 18px */
+    font-weight: bold;
+    text-align: center;
+    margin-bottom: 25px;  /* Increased from 20px */
+    padding-bottom: 15px;  /* Increased from 10px */
+    padding-top: 10px;  /* Added vertical padding */
+    padding-left: 10px;  /* Added horizontal padding */
+    padding-right: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+.sidebar ul {
+
+list-style: none;
+
+padding: 0;
+
+margin: 0;
+
+}
+
+.sidebar ul li a {
+
+display: block;
+
+padding: 12px 20px;
+
+color: white;
+
+text-decoration: none;
+
+transition: background-color 0.3s;
+
+}
+
+.sidebar ul li a:hover,
+
+.sidebar ul li a.active {
+
+background-color: #2c286e;
+
+border-left: 5px solid #1abc9c;
+
+}
+
+.main-content {
+
+flex-grow: 1;
+
+padding: 30px;
+
+}
+
+.header {
+
+text-align: center;
+
+margin-bottom: 30px;
+
+border-bottom: 3px solid #3A358E;
+
+padding-bottom: 20px;
+
+display: flex;
+
+flex-direction: column;
+
+align-items: center;
+
+}
+
+.header .logo {
+
+max-width: 350px;
+
+height: auto;
+
+margin-bottom: 10px;
+
+margin-top: 10px;
+
+}
+
+.header h1 {
+
+font-size: 24px;
+
+margin-bottom: 10px;
+
+color: #1a1a1a;
+
+margin-top: 10px;
+
+display: none;
+
+}
+
+.header h2 {
+
+font-size: 18px;
+
+color: #444;
+
+}
+
+.management-section {
+
+max-width: 900px;
+
+margin: 20px auto;
+
+padding: 15px;
+
+background-color: #fff;
+
+border: 1px solid #ccc;
+
+box-shadow: 0 0 5px rgba(0,0,0,0.05);
+
+}
+
+.management-section h3 {
+
+background-color: #3A358E;
+
+color: white;
+
+padding: 8px 15px;
+
+margin: -15px -15px 15px -15px;
+
+font-size: 16px;
+
+text-align: center;
+
+}
+
+.management-buttons {
+
+display: flex;
+
+flex-direction: column;
+
+gap: 15px;
+
+align-items: center;
+
+}
+
+.management-buttons button {
+
+padding: 10px 20px;
+
+background-color: #3498db;
+
+color: white;
+
+border: none;
+
+border-radius: 4px;
+
+cursor: pointer;
+
+width: 200px;
+
+}
+
+.management-buttons button:hover {
+
+background-color: #2980b9;
+
+}
+
+#restore-input {
+
+margin-top: 10px;
+
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="main-wrapper">
+
+<!-- Full left sidebar (copied from Data Entry) -->
+
+<nav class="sidebar">
+<a class="sidebar-header" href="data entry.html" style="text-decoration: none; display: block; color: white;">
+🏠 হোম
+</a>
+<ul>
+<li><a href="data entry.html">📝 ডেটা এন্ট্রি</a></li>
+<li><a href="commission_calculation.html">🧮 কমিশন গণনা</a></li>
+<li><a href="pettycash-statement.html">💰 পেটিক্যাশ স্টেটমেন্টসমূহ</a></li>
+<li><a href="Commission Statement.html">📊 কমিশন স্টেটমেন্ট</a></li>
+<li><a href="Manpower List (Editable).html">👥 জনবল ও খরচের খাত</a></li>
+<li><a href="archive.html">📦 আর্কাইভ</a></li>
+<li><a href="data management.html" class="active">⚙️ ডাটা ম্যানেজমেন্ট</a></li>
+<li><a href="edit-archive.html">✏️ আর্কাইভ সম্পাদনা</a></li>
+</ul>
+</nav>
+<div class="main-content">
+
+<div class="header">
+
+<img src="Logo.png" alt="জীবন বীমা করপোরেশন Logo" class="logo">
+
+<h2>ডাটা ম্যানেজমেন্ট</h2>
+
+</div>
+
+<div class="management-section">
+
+<h3>ডাটা ব্যাকআপ এবং পুনরুদ্ধার</h3>
+
+<div class="management-buttons">
+
+<button onclick="backupData()">ডাটা ব্যাকআপ নিন (JSON ডাউনলোড)</button>
+
+<button onclick="triggerRestore()">ডাটা পুনরুদ্ধার করুন (JSON আপলোড)</button>
+
+<input type="file" id="restore-input" accept=".json" style="display: none;" onchange="restoreData(this.files[0])">
+
+<button onclick="clearAllData()" style="background-color: #e74c3c;">সব ডাটা মুছুন (সতর্কতা!)</button>
+
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+<script>
+
+// Relevant localStorage keys to backup/restore
+
+const dataKeys = [
+
+'pettyCashExpenses',
+
+'pettyCashReceipts',
+
+'pettyCashArchives',
+
+'manpowerTables',
+
+'manpowerList',
+
+'officeName',
+
+'startDate',
+
+'endDate',
+
+'officeCode'
+
+// Add more keys if needed from other pages
+
+];
+
+function backupData() {
+
+const backup = {};
+
+dataKeys.forEach(key => {
+
+backup[key] = localStorage.getItem(key);
+
+});
+
+const json = JSON.stringify(backup, null, 2);
+
+const blob = new Blob([json], { type: 'application/json' });
+
+const url = URL.createObjectURL(blob);
+
+const a = document.createElement('a');
+
+a.href = url;
+
+a.download = 'pettycash_backup.json';
+
+document.body.appendChild(a);
+
+a.click();
+
+document.body.removeChild(a);
+
+URL.revokeObjectURL(url);
+
+alert('ডাটা ব্যাকআপ সফলভাবে ডাউনলোড করা হয়েছে!');
+
+}
+
+function triggerRestore() {
+
+document.getElementById('restore-input').click();
+
+}
+
+function restoreData(file) {
+
+if (!file) return;
+
+const reader = new FileReader();
+
+reader.onload = function(e) {
+
+try {
+
+const backup = JSON.parse(e.target.result);
+
+dataKeys.forEach(key => {
+
+if (backup[key] !== undefined) {
+
+localStorage.setItem(key, backup[key]);
+
+}
+
+});
+
+alert('ডাটা সফলভাবে পুনরুদ্ধার করা হয়েছে! পেজ রিলোড করুন।');
+
+location.reload();
+
+} catch (err) {
+
+alert('ত্রুটি: অবৈধ JSON ফাইল।');
+
+}
+
+};
+
+reader.readAsText(file);
+
+}
+
+function clearAllData() {
+
+if (confirm('আপনি কি নিশ্চিত যে সব ডাটা মুছতে চান? এটি পুনরুদ্ধার করা যাবে না!')) {
+
+dataKeys.forEach(key => {
+
+localStorage.removeItem(key);
+
+});
+
+alert('সব ডাটা মুছে ফেলা হয়েছে!');
+
+location.reload();
+
+}
+
+}
+
+</script>
+</body>
+
+</html>

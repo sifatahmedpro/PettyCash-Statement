@@ -1,0 +1,1505 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;600;700&family=Roboto:wght@400;700&display=swap');
+
+@font-face {
+  font-family: 'Kalpurush';
+  src: url('https://cdn.jsdelivr.net/gh/fonts-bangla/kalpurush@master/Kalpurush.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'SolaimanLipi';
+  src: url('https://cdn.jsdelivr.net/gh/fonts-bangla/solaimanlipi@master/SolaimanLipi.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Kalpurush', 'SolaimanLipi', 'Hind Siliguri', 'Roboto', sans-serif; padding: 0; background: #f5f5ff; }
+.main-wrapper { max-width: 1400px; margin: 20px auto; box-shadow: 0 2px 10px rgba(0,0,0,0.1); background: white; display: flex; min-height: 90vh; }
+.sidebar { width: 250px; background-color: #3A358E; color: white; padding: 20px 0; flex-shrink: 0; }
+.sidebar-header {
+    font-size: 22px;  /* Increased from 18px */
+    font-weight: bold;
+    text-align: center;
+    margin-bottom: 25px;  /* Increased from 20px */
+    padding-bottom: 15px;  /* Increased from 10px */
+    padding-top: 10px;  /* Added vertical padding */
+    padding-left: 10px;  /* Added horizontal padding */
+    padding-right: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+.sidebar ul { list-style: none; padding: 0; margin: 0; }
+.sidebar ul li a { display: block; padding: 12px 20px; color: white; text-decoration: none; transition: background-color 0.3s; }
+.sidebar ul li a:hover, .sidebar ul li a.active { background-color: #2c286e; border-left: 5px solid #1abc9c; }
+.main-content { flex-grow: 1; padding: 20px; overflow-y: auto; }
+.container { background: white; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow-x: auto; position: relative; }
+.header { text-align: center; margin-bottom: 10px; border-bottom: 3px solid #3A358E; padding-bottom: 10px; }
+.header h1 { font-size: 24px; margin-bottom: 10px; color: #3A358E; }
+.header h2 { font-size: 18px; color: #3A358E; }
+.header .info-line { display: flex; justify-content: center; align-items: center; margin-top: 15px; padding: 0 10px; flex-wrap: wrap; }
+.header .field-group { display: flex; align-items: center; margin: 5px 0; }
+.header .field-group.center-group { justify-content: center; flex-grow: 1; text-align: center; }
+.header .field-group label { font-weight: bold; margin-right: 5px; white-space: nowrap; }
+.header .field-group input { padding: 5px; border: 1px solid #3A358E; border-radius: 4px; }
+.header .field-group.date-range label { width: auto; margin-left: 5px; margin-right: 5px; }
+.main-sections-wrapper { display: flex; gap: 20px; margin-bottom: 0; }
+.receipt-section { flex: 0 0 auto; width: 35%; margin-bottom: 0; }
+.expense-section { flex: 1; min-width: 0; margin-bottom: 0; }
+.expense-section .section-title { min-width: 100%; display: table; }
+.section-title { background: #3A358E; color: white; padding: 12px; font-size: 16px; font-weight: bold; margin-bottom: 15px; }
+table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; table-layout: fixed; }
+th, td { border: 1px solid #3A358E; padding: 8px; text-align: center; }
+th { background: #3A358E; color: white; font-weight: bold; }
+.receipt-table th { font-size: 12px; }
+.expense-table { overflow-x: auto; }
+.expense-table table { width: auto; table-layout: fixed; min-width: 0; }
+.expense-table th { background: #3A358E; font-size: 11px; padding: 8px 5px; line-height: 1.3; white-space: normal; word-wrap: break-word; writing-mode: horizontal-tb; }
+.expense-table td { min-width: 35px; }
+.expense-table th.normal:nth-child(1), .expense-table td:nth-child(1) { width: 80px; min-width: 80px; max-width: 80px; font-size: 12px; padding: 4px 2px; }
+.expense-table th.normal:nth-child(2), .expense-table td:nth-child(2) { width: 120px; min-width: 120px; max-width: 120px; font-size: 11px; padding: 4px 2px; white-space: normal; word-wrap: break-word; line-height: 1.2; }
+.expense-table th.normal:nth-child(3), .expense-table td:nth-child(3) { width: 15px; min-width: 15px; max-width: 15px; font-size: 11px; padding: 4px 2px; }
+.expense-table th.normal:nth-child(4), .expense-table td:nth-child(4) { width: 60px; min-width: 60px; max-width: 60px; font-size: 11px; padding: 4px 2px; }
+.expense-table th.normal:nth-child(5), .expense-table td:nth-child(5) { width: 50px; min-width: 50px; max-width: 50px; font-size: 11px; padding: 4px 2px; }
+.expense-table th.normal:nth-child(6), .expense-table td:nth-child(6) { width: 60px; min-width: 60px; max-width: 60px; font-size: 11px; padding: 4px 2px; }
+/* Expense columns width */
+.expense-table th:not(.normal), .expense-table td:not(:nth-child(1)):not(:nth-child(2)):not(:nth-child(3)):not(:nth-child(4)):not(:nth-child(5)):not(:nth-child(6)):not(:nth-last-child(2)):not(:last-child) { width: 45px; min-width: 45px; max-width: 45px; font-size: 10px; padding: 2px 1px; white-space: normal; word-wrap: break-word; line-height: 1.1; writing-mode: horizontal-tb; transform: none; }
+
+.expense-table th:nth-child(10), .expense-table td:nth-child(10) { width: 60px; min-width: 60px; max-width: 60px; }
+
+/* Total Column (2nd to last) */
+.expense-table th:nth-last-child(2), .expense-table td:nth-last-child(2) { width: 60px; min-width: 60px; max-width: 60px; font-size: 11px; padding: 4px 2px; }
+
+/* Contra Column (Last) */
+.expense-table th:last-child, .expense-table td:last-child { width: 60px; min-width: 60px; max-width: 60px; font-size: 11px; padding: 4px 2px; background-color: #f0f0f0; }
+.expense-table th:last-child { background-color: #3A358E; }
+
+input[type="number"], input[type="text"], input[type="date"] { width: 100%; border: none; background: transparent; text-align: center; font-family: 'Kalpurush', 'SolaimanLipi', 'Hind Siliguri', 'Roboto', sans-serif !important; }
+.static-cell { padding: 8px; text-align: center; border: 1px solid #3A358E; font-family: 'Kalpurush', 'SolaimanLipi', 'Hind Siliguri', 'Roboto', sans-serif !important; }
+.ok-cell { background: #d4edda; color: #155724; font-weight: bold; }
+.summary-section { background: #ecf0f1; padding: 10px; border-radius: 5px; page-break-inside: avoid; font-size: 12px; }
+.summary-row { display: flex; justify-content: space-between; padding: 5px; border-bottom: 1px solid #3A358E; font-size: 12px; }
+.summary-row:last-child { border-bottom: none; }
+.summary-row.total { font-weight: bold; background: #3A358E; color: white; margin-top: 10px; border-radius: 4px; }
+.summary-label { font-weight: bold; }
+.summary-value { min-width: 130px; text-align: right; }
+.summary-section h3 { margin-top: 15px; }
+.summary-section h3:first-child { margin-top: 0; margin-bottom: 10px; }
+.summary-section h3:not(:first-child) { margin-bottom: 10px; }
+.report-tables-wrapper { display: flex; gap: 20px; margin-bottom: 0; }
+.report-tables-wrapper { display: flex !important; gap: 5px !important; width: 100% !important; }
+.main-sections-wrapper { width: 100% !important; }
+.receipt-section { flex: 0 0 28% !important; width: 28% !important; }
+.expense-section { flex: 1 !important; width: 72% !important; }
+.report-tables-wrapper .receipt-section { flex: 0 0 auto; width: 35%; margin-bottom: 0; }
+.report-tables-wrapper .expense-section { flex: 1; min-width: 0; }
+.report-tables-wrapper .receipt-table th, .report-tables-wrapper .receipt-table td { font-size: 11px; padding: 6px; }
+.button-group { display: flex; gap: 15px; justify-content: center; margin-top: 20px; }
+.button-group button { font-size: 18px; padding: 15px 30px; background: #3A358E; color: white; border: none; border-radius: 5px; cursor: pointer; transition: all 0.3s ease; }
+.button-group button:hover { background: #5c6bc0; transform: translateY(-2px); }
+.receipt-buttons { display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px; }
+.receipt-buttons button { font-size: 12px; padding: 6px 12px; background: #3A358E; color: white; border: none; border-radius: 4px; cursor: pointer; }
+.receipt-buttons button.delete-btn { background: #e74c3c; }
+.receipt-buttons button:hover { opacity: 0.8; }
+.receipt-table table { width: auto; table-layout: fixed; min-width: 0; }
+.receipt-table th:nth-child(1), .receipt-table td:nth-child(1) { width: 15px; min-width: 15px; max-width: 15px; font-size: 11px; padding: 3px 2px; }
+.receipt-table th:nth-child(2), .receipt-table td:nth-child(2) { width: 20px; min-width: 20px; max-width: 20px; white-space: normal; word-wrap: break-word; font-size: 11px; padding: 3px 2px; }
+.receipt-table th:nth-child(3), .receipt-table td:nth-child(3) { width: 10px; min-width: 10px; max-width: 10px; font-size: 11px; padding: 3px 2px; }
+.receipt-table th:nth-child(4), .receipt-table td:nth-child(4) { width: 10px; min-width: 10px; max-width: 10px; font-size: 11px; padding: 3px 2px; }
+table th, table td, .summary-label, .summary-value, input, span { font-weight: bold !important; }
+
+@media print {
+  @page { margin: 0.3in; size: legal landscape; }
+  .sidebar, .button-group, button, .receipt-buttons { display: none !important; }
+  body { background: white; padding: 0; margin: 0; }
+  .main-wrapper { margin: 0 auto !important; box-shadow: none; display: block !important; width: 100% !important; max-width: none !important; }
+  .main-content { padding: 0 !important; width: 100% !important; }
+  .container { box-shadow: none; padding: 10px !important; font-family: 'Kalpurush', 'SolaimanLipi', 'Hind Siliguri', 'Roboto', sans-serif !important; width: 100% !important; margin: 0 !important; max-width: 100% !important; }
+  .container th, .container td, .summary-label, .summary-value, .summary-section h3, .header span { font-weight: bold !important; color: #000 !important; white-space: normal !important; word-wrap: break-word !important; }
+  .summary-value span { text-align: right !important; }
+  .report-tables-wrapper { display: flex !important; gap: 10px !important; }
+  .receipt-table thead, .expense-table thead { display: table-header-group; }
+  tbody { page-break-inside: auto; }
+  tbody tr:last-child { page-break-after: avoid; }
+  table { page-break-inside: auto !important; table-layout: auto !important; width: 100% !important; break-inside: auto; }
+  tr { page-break-inside: avoid; page-break-after: auto; break-inside: avoid; }
+  thead { display: table-header-group; }
+  .summary-section { page-break-inside: avoid !important; break-inside: avoid !important; font-size: 12px !important; padding: 6px !important; }
+  .summary-row { padding: 3px !important; font-size: 12px !important; color: #000 !important; }
+  .summary-section h3 { font-size: 14px !important; margin-bottom: 5px !important; color: #000 !important; margin-top: 10px !important; }
+  .summary-section h3:first-child { margin-top: 0 !important; }
+  .expense-table th, .expense-table td { 
+    writing-mode: horizontal-tb !important; 
+    transform: none !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    color: #000 !important;
+    width: auto !important;
+    min-width: auto !important;
+    max-width: none !important;
+    padding: 6px 4px !important;
+    font-size: 12px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+  .expense-table th.normal:nth-child(1), .expense-table td:nth-child(1) { 
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    font-size: 12px !important;
+    width: 70px !important;
+    max-width: 70px !important;
+  }
+  .expense-table th.normal:nth-child(2), .expense-table td:nth-child(2) { 
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    width: 110px !important;
+    max-width: 110px !important;
+    font-size: 12px !important;
+  }
+@media print {
+  .expense-table th.normal:nth-child(3), 
+  .expense-table td:nth-child(3) { 
+    width: 55px !important;
+    min-width: 55px !important;
+    max-width: 55px !important;
+  }
+}
+  .expense-table th.normal:nth-child(3), .expense-table td:nth-child(3) { 
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    font-size: 12px !important;
+  }
+@media print {
+  .expense-table th.normal:nth-child(4), 
+  .expense-table td:nth-child(4) { 
+    width: 75px !important;
+    min-width: 75px !important;
+    max-width: 75px !important;
+  }
+}
+  .expense-table th.normal:nth-child(4), .expense-table td:nth-child(4) { 
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    font-size: 12px !important;
+  }
+  .expense-table th.normal:nth-child(5), .expense-table td:nth-child(5) { 
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    font-size: 12px !important;
+    width: 70px !important;
+    max-width: 70px !important;
+  }
+@media print {
+  .expense-table th.normal:nth-child(6), 
+  .expense-table td:nth-child(6) { 
+    width: 60px !important;
+    min-width: 60px !important;
+    max-width: 50px !important;
+  }
+}
+  .expense-table th.normal:nth-child(6), .expense-table td:nth-child(6) { 
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    font-size: 12px !important;
+  }
+  
+  /* Print styles for Total and Contra */
+  .expense-table th:nth-last-child(2), .expense-table td:nth-last-child(2) { 
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    font-size: 12px !important;
+    width: 60px !important;
+  }
+  .expense-table th:last-child, .expense-table td:last-child { 
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    font-size: 12px !important;
+    width: 60px !important;
+  }
+
+@media print {
+  .expense-table th:not(.normal), .expense-table td:not(:nth-child(1)):not(:nth-child(2)):not(:nth-child(3)):not(:nth-child(4)):not(:nth-child(5)):not(:nth-child(6)):not(:nth-last-child(2)):not(:last-child) { 
+    width: 62px !important;
+    min-width: 62px !important;
+    max-width: none !important;
+    padding: 2px 1px;
+    white-space: normal;
+    word-wrap: break-word;
+    line-height: 1.1;
+    writing-mode: horizontal-tb;
+    transform: none;
+  }
+}
+  .receipt-table table { 
+    width: auto !important; 
+    table-layout: auto !important; 
+  }
+  .receipt-table th, .receipt-table td { 
+    font-size: 12px !important; 
+    padding: 4px 5px !important;
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    color: #000 !important;
+    width: auto !important;
+    min-width: auto !important;
+    max-width: none !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+@media print {
+.receipt-table th:nth-child(1), 
+.receipt-table td:nth-child(1) { 
+  width: 35px !important;
+  max-width: 35px !important;
+}
+
+ .receipt-table th:nth-child(1), .receipt-table td:nth-child(1) { 
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    max-width: 35px !important;
+  }
+@media print {
+.receipt-table th:nth-child(2), 
+.receipt-table td:nth-child(2) { 
+  width: 50px !important;
+  max-width: 50px !important;
+}
+
+ .receipt-table th:nth-child(2), .receipt-table td:nth-child(2) { 
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    max-width: 50px !important;
+  }
+@media print {
+.receipt-table th:nth-child(3), 
+.receipt-table td:nth-child(3) { 
+  width: 45px !important;
+  max-width: 45px !important;
+}
+  .receipt-table th:nth-child(3), .receipt-table td:nth-child(3) { 
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    max-width: 45px !important;
+  }
+@media print {
+.receipt-table th:nth-child(4), 
+.receipt-table td:nth-child(4) { 
+  width: 35px !important;
+  max-width: 35px !important;
+}
+  .receipt-table th:nth-child(4), .receipt-table td:nth-child(4) { 
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    max-width: 40px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+  .section-title { 
+    font-size: 20px !important; 
+    padding: 10px !important; 
+    font-weight: bold !important;
+    color: #fff !important;
+    background: #3A358E !important;
+  }
+  .header h1 { font-size: 32px !important; color: #000 !important; }
+  .header h2 { 
+    display: block !important; 
+    font-size: 24px !important;
+    margin-top: 10px !important;
+    color: #000 !important;
+  }
+  .header .field-group span {
+    width: auto !important;
+    padding: 0 5px !important;
+  }
+  .header .field-group.center-group {
+    flex-grow: 0 !important;
+  }
+  .main-sections-wrapper { width: 100% !important; }
+  .receipt-section { flex: 0 0 28% !important; width: 28% !important; }
+  .expense-section { flex: 1 !important; width: 72% !important; }
+  .expense-table table { 
+    min-width: 0 !important; 
+    width: 100% !important; 
+    table-layout: fixed !important;
+  }
+  .static-cell {
+    color: #000 !important;
+  }
+  span {
+    color: #000 !important;
+  }
+  tfoot {
+    display: table-row-group !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+}
+@media print {
+  .header .info-line {
+    justify-content: space-between !important;
+  }
+  
+  .header .field-group:first-child {
+    justify-content: flex-start !important;
+    text-align: left !important;
+  }
+  
+  .header .field-group:first-child label {
+    text-align: left !important;
+  }
+  
+  .header .field-group:first-child span {
+    text-align: left !important;
+    justify-content: flex-start !important;
+  }
+}
+</style>
+</head>
+<body>
+<div class="main-wrapper">
+<nav class="sidebar">
+<a class="sidebar-header" href="data entry.html" style="text-decoration: none; display: block; color: white;">
+🏠 হোম
+</a>
+<ul>
+<li><a href="data entry.html">📝 ডেটা এন্ট্রি</a></li>
+<li><a href="commission_calculation.html">🧮 কমিশন গণনা</a></li>
+<li><a href="pettycash-statement.html" class="active">💰 পেটিক্যাশ স্টেটমেন্টসমূহ</a></li>
+<li><a href="Commission Statement.html">📊 কমিশন স্টেটমেন্ট</a></li>
+<li><a href="Manpower List (Editable).html">👥 জনবল ও খরচের খাত</a></li>
+<li><a href="archive.html">📦 আর্কাইভ</a></li>
+<li><a href="data management.html">⚙️ ডাটা ম্যানেজমেন্ট</a></li>
+<li><a href="edit-archive.html">✏️ আর্কাইভ সম্পাদনা</a></li>
+</ul>
+</nav>
+<div class="main-content">
+<div class="container">
+<div class="header">
+<img src="Logo.png" alt="জীবন বীমা করপোরেশন Logo" style="max-width: 400px; height: auto; margin-bottom: 10px;">
+<h2 style="font-size: 22px; color: #3A358E; margin-bottom: 10px; font-weight: bold;">পেটিক্যাশ স্টেটমেন্ট</h2>
+<div class="info-line">
+    <div class="field-group">
+        <label>অফিসের নাম:</label>
+        <input type="text" id="office-name" style="width: 250px;">
+    </div>
+    <div class="field-group date-range center-group">
+        <label>তারিখ:</label>
+        <input type="text" id="start-date" placeholder="dd/mm/yy" style="width: 100px;">
+        <label>হতে:</label>
+        <input type="text" id="end-date" placeholder="dd/mm/yy" style="width: 100px;">
+    </div>
+
+    <div class="field-group" style="flex-direction: column; align-items: flex-end;">
+        
+        <div class="field-group" style="margin: 2px 0;">
+            <label>স্টেটমেন্ট নং:</label>
+            <input type="text" id="statement-no" style="width: 150px;">
+        </div>
+        
+        <div class="field-group" style="margin: 2px 0;">
+            <label>অফিস কোড:</label>
+            <input type="text" id="office-code" style="width: 150px;">
+        </div>
+    </div>
+    </div>
+<div class="main-sections-wrapper">
+<div class="receipt-section">
+<div class="section-title">প্রাপ্তির বিবরণমূহ</div>
+<table class="receipt-table">
+<thead>
+<tr>
+<th>তারিখ</th>
+<th>প্রাপ্তির বিবরণমূহ</th>
+<th>ব্যাংক টাকা জমা</th>
+<th>ক্যাশ টাকা জমা</th>
+</tr>
+</thead>
+<tbody id="receipt-body">
+</tbody>
+<tfoot id="receipt-total">
+<tr>
+<td colspan="2" style="text-align: right; font-weight: bold;">সর্বমোট</td>
+<td id="receipt-bank-total" class="static-cell">০</td>
+<td id="receipt-cash-total" class="static-cell">০</td>
+</tr>
+</tfoot>
+</table>
+<div class="receipt-buttons">
+  <button onclick="addReceiptRow()">নতুন প্রাপ্তি যোগ করুন</button>
+  <button class="delete-btn" onclick="removeLastReceiptRow()">নতুন প্রাপ্তি বাদ দিন</button>
+</div>
+<div class="summary-section">
+<h3>খরচের সংক্ষিপ্ত বিবরণ</h3>
+<h3>ক) পূর্বের জের:</h3>
+<div class="summary-row">
+  <span class="summary-label">পূর্বের ব্যাংক জের:</span>
+  <span class="summary-value"><input type="text" class="amount-input" id="summary-opening-bank" value="০" readonly></span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">পূর্বের ক্যাশ জের:</span>
+  <span class="summary-value"><input type="text" class="amount-input" id="summary-opening-cash" value="০" readonly></span>
+</div>
+<h3>খ) চলতি প্রাপ্তি:</h3>
+<div class="summary-row">
+  <span class="summary-label">ব্যাংক ফান্ড প্রাপ্তি:</span>
+  <span class="summary-value"><input type="text" class="amount-input" id="summary-current-bank-receipt" value="০" readonly></span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">ক্যাশ ফান্ড প্রাপ্তি:</span>
+  <span class="summary-value"><input type="text" class="amount-input" id="summary-current-cash-receipt" value="০" readonly></span>
+</div>
+<h3>গ) মোট ফান্ড (জের সহ):</h3>
+<div class="summary-row">
+  <span class="summary-label">পূর্বের জের ও ফান্ড প্রাপ্তিসহ মোট ব্যাংক ফান্ড:</span>
+  <span class="summary-value"><input type="text" class="amount-input" id="summary-total-bank-fund" value="০" readonly></span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">পূর্বের জের ও ফান্ড প্রাপ্তিসহ মোট ক্যাশ ফান্ড:</span>
+  <span class="summary-value"><input type="text" class="amount-input" id="summary-total-cash-fund" value="০" readonly></span>
+</div>
+<h3>ঘ) চলতি পক্ষের মোট খরচ:</h3>
+<div class="summary-row">
+  <span class="summary-label">চলতি পক্ষের মোট ব্যাংক খরচ:</span>
+  <span class="summary-value"><input type="text" class="amount-input" id="total-bank-expense" value="০" readonly></span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">চলতি পক্ষের মোট ক্যাশ খরচ:</span>
+  <span class="summary-value"><input type="text" class="amount-input" id="total-cash-expense" value="০" readonly></span>
+</div>
+<h3>ঙ) অবশিষ্ট জের:</h3>
+<div class="summary-row">
+  <span class="summary-label">খরচের পর অবশিষ্ট ব্যাংক টাকা:</span>
+  <span class="summary-value"><input type="text" class="amount-input" id="bank-balance" value="০" readonly></span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">খরচের পর অবশিষ্ট ক্যাশ টাকা:</span>
+  <span class="summary-value"><input type="text" class="amount-input" id="cash-balance" value="০" readonly></span>
+</div>
+</div>
+
+<div class="summary-section verification-summary" style="margin-top: 15px;">
+  <h3 style="margin-bottom: 10px;">যাচাইকরণ (Verification)</h3>
+  <div class="summary-row">
+    <span class="summary-label">মোট ব্যাংক টাকা ও ক্যাশ টাকার যোগফল:</span>
+    <span class="summary-value"><input type="text" id="verify-bank-cash-total" value="০" readonly></span>
+  </div>
+  <div class="summary-row">
+    <span class="summary-label">সকল কলামের যোগফল (মোট + কন্ট্রা):</span>
+    <span class="summary-value"><input type="text" id="verify-column-total" value="০" readonly></span>
+  </div>
+  <div class="summary-row total" style="background: #e74c3c;">
+    <span class="summary-label">ব্যবধান:</span>
+    <span class="summary-value"><input type="text" id="verify-difference" value="০" readonly style="color: white; font-weight: bold;"></span>
+  </div>
+</div>
+</div>
+<div class="expense-section">
+<div class="expense-table">
+<div class="section-title">পরিশোধের তারিখ ও বিবরণমূহ</div>
+<table>
+<thead>
+<tr>
+<th class="normal">পরিশোধের তারিখ</th>
+<th class="normal">পরিশোধের বিবরণমূহ</th>
+<th class="normal">ভাউচার নাং <button onclick="generateVoucherNumbers()" style="font-size: 10px; padding: 2px 4px; background: #fff; color: #3A358E; border: 1px solid #3A358E; border-radius: 3px; cursor: pointer;">ভাউচার নম্বর তৈরী করুন</button></th>
+<th class="normal">ব্যাংক টাকা</th>
+<th class="normal">চেক নাং <button onclick="generateCheckNumbers()" style="font-size: 10px; padding: 2px 4px; background: #fff; color: #3A358E; border: 1px solid #3A358E; border-radius: 3px; cursor: pointer;">চেক নম্বর তৈরী করুন</button></th>
+<th class="normal">ক্যাশ টাকা</th>
+<th>১ম বর্ষ কমিশন</th>
+<th>নবায়ন কমিশন</th>
+<th>প্রোডাকশন বোনাস</th>
+<th>কর্মচারী বেতন (অফিস)</th>
+<th>কর্মচারী বেতন (উন্নয়ন)</th>
+<th>টেলিফোন বিল</th>
+<th>মুদ্রণ ও মণিহারি খরচ</th>
+<th>ভ্রমণ ও যাতায়াত খরচ</th>
+<th>উৎসব বোনাস (অফিস)</th>
+<th>উৎসব বোনাস (উন্নয়ন)</th>
+<th>ডাক্তারী পরীক্ষার ফি</th>
+<th>লাঞ্চভাতা (অফিস)</th>
+<th>লাঞ্চভাতা (উন্নয়ন)</th>
+<th>রাজস্ব টিকেট</th>
+<th>ইন্টারনেট বিল</th>
+<th>ক্যাশ এলাউন্স</th>
+<th>উৎসাহ বোনাস (অফিস)</th>
+<th>উৎসাহ বোনাস (উন্নয়ন)</th>
+<th>বৈশাখী ভাতা (অফিস)</th>
+<th>বৈশাখী ভাতা (উন্নয়ন)</th>
+<th>শ্রান্তি ও বিনোদন ভাতা</th>
+<th>সাধারণ খরচ</th>
+<th>পত্রিকা বিল</th>
+<th>বিবিধ ব্যয়</th>
+<th>আসবাবপত্র ক্রয়</th>
+<th>বোনাস কমিশন</th>
+<th>ডাক ও তার খরচ</th>
+<th>অফিস ভাড়া</th>
+<th>চিকিৎসা খরচ (অফিস)</th>
+<th>দৈঃমঃভিঃ কর্মচারীর বিল</th>
+<th>মোট</th>
+<th>কন্ট্রা</th>
+</tr>
+</thead>
+<tbody id="expense-body">
+</tbody>
+<tfoot id="expense-total">
+<tr>
+<td colspan="2" style="text-align: right; font-weight: bold;">সর্বমোট</td>
+<td></td>
+<td id="expense-bank-total" class="static-cell">০</td>
+<td></td>
+<td id="expense-cash-total" class="static-cell">০</td>
+<td id="col-1st-year-commission" class="static-cell">০</td>
+<td id="col-renewal-commission" class="static-cell">০</td>
+<td id="col-production-bonus" class="static-cell">০</td>
+<td id="col-employee-salary-office" class="static-cell">০</td>
+<td id="col-employee-salary-dev" class="static-cell">০</td>
+<td id="col-telephone-bill" class="static-cell">০</td>
+<td id="col-printing-stationery" class="static-cell">০</td>
+<td id="col-travel-expense" class="static-cell">০</td>
+<td id="col-festival-bonus-office" class="static-cell">০</td>
+<td id="col-festival-bonus-dev" class="static-cell">০</td>
+<td id="col-medical-fee" class="static-cell">০</td>
+<td id="col-lunch-office" class="static-cell">০</td>
+<td id="col-lunch-dev" class="static-cell">০</td>
+<td id="col-revenue-ticket" class="static-cell">০</td>
+<td id="col-internet-bill" class="static-cell">০</td>
+<td id="col-cash-allowance" class="static-cell">০</td>
+<td id="col-incentive-office" class="static-cell">০</td>
+<td id="col-incentive-dev" class="static-cell">০</td>
+<td id="col-boishakhi-office" class="static-cell">০</td>
+<td id="col-boishakhi-dev" class="static-cell">০</td>
+<td id="col-shraboni-entertainment" class="static-cell">০</td>
+<td id="col-general-expense" class="static-cell">০</td>
+<td id="col-newspaper-bill" class="static-cell">০</td>
+<td id="col-misc-expense" class="static-cell">০</td>
+<td id="col-furniture-purchase" class="static-cell">০</td>
+<td id="col-bonus-commission" class="static-cell">০</td>
+<td id="col-postal-expense" class="static-cell">০</td>
+<td id="col-office-rent" class="static-cell">০</td>
+<td id="col-medical-office" class="static-cell">০</td>
+<td id="col-employee-bill" class="static-cell">००</td>
+<td id="expense-grand-total" class="static-cell">০</td>
+<td id="expense-contra-total" class="static-cell">০</td>
+</tr>
+</tfoot>
+</table>
+</div>
+</div>
+</div>
+<div class="button-group">
+<button onclick="generateReport()">Generate Statement</button>
+</div>
+</div>
+</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+function convertToBangla(input) {
+  const banglaDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+  return String(input).replace(/\d/g, digit => banglaDigits[parseInt(digit)]);
+}
+
+function convertToEnglish(str) {
+  if (!str) return '';
+  const banglaDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+  let result = '';
+  for (let c of str) {
+    let index = banglaDigits.indexOf(c);
+    result += (index > -1) ? index : c;
+  }
+  return result;
+}
+
+function formatDateToDDMMYY(isoDate) {
+  const d = new Date(isoDate);
+  if (isNaN(d.getTime())) return isoDate;
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = String(d.getFullYear() % 100).padStart(2, '0');
+  return convertToBangla(`${day}/${month}/${year}`);
+}
+
+function parseDisplayDate(str) {
+  str = str.trim().replace(/\s/g, '');
+  const parts = str.split('/');
+  if (parts.length !== 3) return null;
+  let day = convertToEnglish(parts[0]).padStart(2, '0');
+  let month = convertToEnglish(parts[1]).padStart(2, '0');
+  let year = convertToEnglish(parts[2]);
+  if (year.length === 2) year = '20' + year;
+  const iso = `${year}-${month}-${day}`;
+  if (isNaN(new Date(iso).getTime())) return null;
+  return iso;
+}
+
+function addReceiptRow(entry = null) {
+  const tbody = document.getElementById('receipt-body');
+  const tr = document.createElement('tr');
+  let dateValue = '';
+  let detailsValue = '';
+  let bankValue = '০';
+  let cashValue = '০';
+  if (entry) {
+    dateValue = entry.date || '';
+    detailsValue = entry.details || '';
+    bankValue = convertToBangla(entry.bank || '0');
+    cashValue = convertToBangla(entry.cash || '0');
+  }
+  tr.innerHTML = `
+    <td><input type="text" class="receipt-date" value="${dateValue}" placeholder="dd/mm/yy"></td>
+    <td><input type="text" value="${detailsValue}"></td>
+    <td><input type="text" class="amount-input" value="${bankValue}"></td>
+    <td><input type="text" class="amount-input" value="${cashValue}"></td>
+  `;
+  tbody.appendChild(tr);
+  flatpickr(tr.querySelector('.receipt-date'), { dateFormat: "d/m/y", allowInput: true });
+}
+
+function removeLastReceiptRow() {
+  const tbody = document.getElementById('receipt-body');
+  if (tbody.children.length > 1) {
+    tbody.removeChild(tbody.lastChild);
+    saveReceipts();
+    // Must reload all data to recalculate contra
+    reloadDataAndCalculate();
+  } else {
+    alert('অন্তত একটি সারি রাখতে হবে!');
+  }
+}
+
+function loadReceipts() {
+  const receipts = JSON.parse(localStorage.getItem('pettyCashReceipts') || '[]');
+  const tbody = document.getElementById('receipt-body');
+  tbody.innerHTML = '';
+  const startStr = document.getElementById('start-date').value;
+  const endStr = document.getElementById('end-date').value;
+  const startISO = parseDisplayDate(startStr) || '1900-01-01';
+  const endISO = parseDisplayDate(endStr) || '9999-12-31';
+  const filtered = receipts.filter(entry => {
+    const entryISO = parseDisplayDate(entry.date);
+    if (!entryISO) return true;
+    return entryISO >= startISO && entryISO <= endISO;
+  });
+  
+  if (filtered.length > 0) {
+    filtered.forEach(entry => addReceiptRow(entry));
+  } else {
+    addReceiptRow({details: 'পূর্বের জের'});
+  }
+
+  // Set first row details if empty
+  const firstRow = tbody.querySelector('tr');
+  if (firstRow) {
+    const detailsInput = firstRow.querySelectorAll('input')[1];
+    if (detailsInput && !detailsInput.value.trim()) {
+      detailsInput.value = 'পূর্বের জের';
+    }
+  }
+}
+
+// ================== UPDATED FUNCTION (NEW GROUPING LOGIC) ==================
+function loadPettyCashStatement() {
+  const expenses = JSON.parse(localStorage.getItem('pettyCashExpenses') || '[]');
+  const expenseTableBody = document.getElementById('expense-body');
+  const expenseTable = expenseTableBody.closest('table');
+  if (!expenseTable) return [];
+  const expenseTableHeaders = Array.from(expenseTable.querySelector('thead tr').children);
+  expenseTableBody.innerHTML = '';
+  const headerMap = {};
+  expenseTableHeaders.forEach((th, index) => {
+    let headerText = th.textContent.replace(/ভাউচার নম্বর তৈরী করুন|চেক নম্বর তৈরী করুন/g, '').trim();
+    headerMap[headerText] = index;
+  });
+  const startDateStr = document.getElementById('start-date').value;
+  const endDateStr = document.getElementById('end-date').value;
+  const startISO = parseDisplayDate(startDateStr) || '1900-01-01';
+  const endISO = parseDisplayDate(endDateStr) || '9999-12-31';
+  const filteredExpenses = expenses.filter(entry => entry.date >= startISO && entry.date <= endISO);
+  
+  const groupedExpenses = {};
+  
+  // --- THIS IS THE NEW GROUPING LOGIC ---
+  filteredExpenses.forEach(entry => {
+    let groupKey;
+    const isCommission = entry.expenseColumn === '১ম বর্ষ কমিশন' || entry.expenseColumn === 'নবায়ন কমিশন';
+
+    if (isCommission && entry.sessionId) {
+        // Group commissions ONLY if they share a sessionId
+        groupKey = `commission_session_${entry.sessionId}`;
+    } else {
+        // All other entries (office, staff, contra, or old commissions) get a unique key
+        // We MUST assume entry.id exists for saving to work
+        groupKey = `unique_${entry.id}`;
+    }
+    // --- END OF NEW LOGIC ---
+
+    if (!groupedExpenses[groupKey]) {
+        let displayDetails;
+        // For commission groups, show agent name. For others, show entry details.
+        if (isCommission && entry.sessionId) {
+            displayDetails = entry.manpowerName || 'কমিশন';
+        } else if (entry.manpowerName) {
+            displayDetails = entry.manpowerName;
+        } else {
+            displayDetails = entry.details;
+        }
+
+        groupedExpenses[groupKey] = {
+          key: groupKey, // Store the key itself
+          date: entry.date,
+          details: displayDetails,
+          manpowerCode: entry.manpowerCode,
+          manpowerName: entry.manpowerName,
+          voucherNo: entry.voucherNo,
+          checkNo: entry.checkNo,
+          contraFromExpense: 0, // Type 1: From "Contra" expense column
+          contraFromInput: 0,   // Type 2: From manual input field
+          paymentType: entry.paymentType,
+          columns: {}
+        };
+    }
+
+    const amount = parseFloat(entry.amount || 0);
+    
+    // ================== FIX: AVOID DOUBLE COUNTING ==================
+    if (entry.expenseColumn === 'কন্ট্রা') {
+        // This is a Type 1 contra. Its value is 'amount'.
+        // We IGNORE its 'contraAmount' field to prevent double counting.
+        groupedExpenses[groupKey].contraFromExpense += amount;
+    } else {
+        // This is a regular expense.
+        const columnName = entry.expenseColumn;
+        if (columnName) { 
+            if (!groupedExpenses[groupKey].columns[columnName]) {
+                groupedExpenses[groupKey].columns[columnName] = 0;
+            }
+            groupedExpenses[groupKey].columns[columnName] += amount;
+        }
+
+        // Check if this regular expense has a Type 2 contra (manual input).
+        // Use Math.max because all entries in the group will have the same saved value.
+        const contraInputVal = parseFloat(entry.contraAmount || 0);
+        groupedExpenses[groupKey].contraFromInput = Math.max(
+            groupedExpenses[groupKey].contraFromInput, 
+            contraInputVal
+        );
+    }
+    // ================== END OF FIX ==================
+  });
+
+  let totalBankExpense = 0;
+  let totalCashExpense = 0;
+  let grandTotal = 0;
+  let totalContra = 0; // Total for Contra column
+  
+  let columnTotals = Array(expenseTableHeaders.length - 8).fill(0); 
+
+  Object.values(groupedExpenses).forEach(group => {
+    const tr = document.createElement('tr');
+    const numColumns = expenseTableHeaders.length;
+    const rowCells = Array(numColumns).fill('<td class="static-cell">০</td>');
+    
+    rowCells[headerMap['ভাউচার নাং']] = `<td><input type="text" value="${convertToBangla(group.voucherNo || '')}"></td>`;
+    rowCells[headerMap['চেক নাং']] = `<td><input type="text" value="${convertToBangla(group.checkNo || '')}"></td>`;
+    
+    const dateIndex = headerMap['পরিশোধের তারিখ'];
+    if (dateIndex !== undefined) {
+      rowCells[dateIndex] = `<td class="static-cell">${formatDateToDDMMYY(group.date)}</td>`;
+    }
+    
+    const detailsIndex = headerMap['পরিশোধের বিবরণমূহ'];
+    if (detailsIndex !== undefined) {
+      rowCells[detailsIndex] = `<td class="static-cell">${group.details}</td>`;
+    }
+    
+    // This is the total for the "Total" column. It EXCLUDES contra.
+    let rowTotal = 0;
+    Object.entries(group.columns).forEach(([columnName, amount]) => {
+      rowTotal += amount;
+      const expenseColumnIndex = headerMap[columnName];
+      if (expenseColumnIndex !== undefined && expenseColumnIndex >= 6 && expenseColumnIndex < numColumns - 2) {
+        rowCells[expenseColumnIndex] = `<td class="static-cell">${convertToBangla(amount.toFixed(2))}</td>`;
+        columnTotals[expenseColumnIndex - 6] += amount;
+      }
+    });
+    
+    // ================== FIX: ROW-LEVEL LOGIC ==================
+    // finalContraVal is the SUM of Type 1 (expense) and Type 2 (input)
+    const finalContraVal = (group.contraFromExpense || 0) + (group.contraFromInput || 0);
+    totalContra += finalContraVal;
+
+    const banglaRowTotal = convertToBangla(rowTotal.toFixed(2));
+    
+    // This variable is the amount that is a "real" expense (not a transfer)
+    let realExpenseAmount = rowTotal;
+    
+    // This variable is the amount that is a "transfer" (contra)
+    let contraExpenseAmount = finalContraVal;
+
+    if (group.paymentType === 'bank') {
+        // This is the bank-to-cash contra logic
+        // The total value in the 'Bank' column is the real expense + the contra transfer
+        let bankColValue = realExpenseAmount + contraExpenseAmount;
+        
+        rowCells[headerMap['ব্যাংক টাকা']] = `<td class="static-cell">${convertToBangla(bankColValue.toFixed(2))}</td>`;
+        totalBankExpense += bankColValue;
+        
+    } else if (group.paymentType === 'cash') {
+        // A regular cash expense.
+        // A Type 2 contra from cash is rare, but possible.
+        let cashColValue = realExpenseAmount + contraExpenseAmount;
+        rowCells[headerMap['ক্যাশ টাকা']] = `<td class="static-cell">${convertToBangla(cashColValue.toFixed(2))}</td>`;
+        totalCashExpense += cashColValue;
+    }
+    
+    // "Total" Column (EXCLUDES contra, as per user's "will not go the total column")
+    rowCells[headerMap['মোট']] = `<td class="static-cell">${banglaRowTotal}</td>`;
+    grandTotal += rowTotal;
+
+    // "Contra" Column
+    rowCells[headerMap['কন্ট্রা']] = `<td><input type="text" class="amount-input contra-input" value="${convertToBangla(finalContraVal > 0 ? finalContraVal : '')}" placeholder=""></td>`;
+    // ================== END OF FIX ==================
+    
+    tr.innerHTML = rowCells.join('');
+    expenseTableBody.appendChild(tr);
+    tr.dataset.groupKey = group.key; // <-- ***FIX: ADDED GROUP KEY TO ROW***
+  });
+
+  document.getElementById('total-bank-expense').value = convertToBangla(totalBankExpense.toFixed(2));
+  document.getElementById('total-cash-expense').value = convertToBangla(totalCashExpense.toFixed(2));
+  document.getElementById('expense-bank-total').textContent = convertToBangla(totalBankExpense.toFixed(2));
+  document.getElementById('expense-cash-total').textContent = convertToBangla(totalCashExpense.toFixed(2));
+  document.getElementById('expense-grand-total').textContent = convertToBangla(grandTotal.toFixed(2));
+  document.getElementById('expense-contra-total').textContent = convertToBangla(totalContra.toFixed(2));
+  
+  const expenseColumns = [
+    'col-1st-year-commission', 'col-renewal-commission', 'col-production-bonus',
+    'col-employee-salary-office', 'col-employee-salary-dev', 'col-telephone-bill',
+    'col-printing-stationery', 'col-travel-expense', 'col-festival-bonus-office',
+    'col-festival-bonus-dev', 'col-medical-fee', 'col-lunch-office',
+    'col-lunch-dev', 'col-revenue-ticket', 'col-internet-bill',
+    'col-cash-allowance', 'col-incentive-office', 'col-incentive-dev',
+    'col-boishakhi-office', 'col-boishakhi-dev', 'col-shraboni-entertainment',
+    'col-general-expense', 'col-newspaper-bill', 'col-misc-expense',
+    'col-furniture-purchase', 'col-bonus-commission', 'col-postal-expense',
+    'col-office-rent', 'col-medical-office', 'col-employee-bill'
+  ];
+  expenseColumns.forEach((id, index) => {
+    if (document.getElementById(id)) {
+        document.getElementById(id).textContent = convertToBangla(columnTotals[index].toFixed(2));
+    }
+  });
+  
+  const theadRow = expenseTable.querySelector('thead tr');
+  const tbodyRows = Array.from(expenseTableBody.children);
+  const tfootRow = expenseTable.querySelector('tfoot tr');
+  const numColumns = theadRow.children.length;
+  
+  const col1stYearTotal = parseFloat(convertToEnglish(document.getElementById('col-1st-year-commission').textContent.trim()));
+  const colRenewalTotal = parseFloat(convertToEnglish(document.getElementById('col-renewal-commission').textContent.trim()));
+  const hasCommissionData = (col1stYearTotal > 0) || (colRenewalTotal > 0);
+  
+  for (let col = 6; col < numColumns - 2; col++) {
+    const totalCell = tfootRow.children[col - 1]; 
+    const totalText = totalCell.textContent.trim();
+    const totalVal = parseFloat(convertToEnglish(totalText));
+    
+    if ((col === 6 || col === 7) && hasCommissionData) {
+      theadRow.children[col].style.display = '';
+      tfootRow.children[col - 1].style.display = '';
+      tbodyRows.forEach(row => {
+        if (row.children[col]) row.children[col].style.display = '';
+      });
+    } else if (totalVal === 0 || isNaN(totalVal)) {
+      theadRow.children[col].style.display = 'none';
+      tfootRow.children[col - 1].style.display = 'none';
+      tbodyRows.forEach(row => {
+        if (row.children[col]) row.children[col].style.display = 'none';
+      });
+    } else {
+      theadRow.children[col].style.display = '';
+      tfootRow.children[col - 1].style.display = '';
+      tbodyRows.forEach(row => {
+        if (row.children[col]) row.children[col].style.display = '';
+      });
+    }
+  }
+
+  forceHideProductionBonusIfZero();
+
+  // ================== FIX: ADD CONTRA TO RECEIPTS ROW (SEPARATE ENTRIES) ==================
+        
+  // Remove any existing dynamic contra rows to prevent duplicates on reload
+  document.querySelectorAll('.dynamic-contra-row').forEach(row => row.remove());
+  
+  const receiptTbody = document.getElementById('receipt-body');
+  
+  // Find all grouped expenses that are "Contra"
+  const contraGroups = Object.values(groupedExpenses).filter(group => {
+      // A group is "Contra" if it has a contra value.
+      const finalContraVal = (group.contraFromExpense || 0) + (group.contraFromInput || 0);
+      return finalContraVal > 0;
+  });
+
+  // Sort them by date
+  contraGroups.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  // Add a new row for EACH contra group
+  contraGroups.forEach(group => {
+      const contraRow = document.createElement('tr');
+      contraRow.className = 'dynamic-contra-row'; // Use a class to remove all
+      
+      const finalContraVal = (group.contraFromExpense || 0) + (group.contraFromInput || 0);
+
+      // We use the group's date, which is the original entry date
+      const entryDate = formatDateToDDMMYY(group.date);
+
+      contraRow.innerHTML = `
+          <td><input type="text" class="receipt-date contra-date" value="${entryDate}"></td>
+          <td class="static-cell" style="text-align: left; padding-left: 5px;">ব্যাংক হতে ক্যাশ</td>
+          <td class="static-cell">০</td>
+          <td class="static-cell">${convertToBangla(finalContraVal.toFixed(2))}</td>
+      `;
+      receiptTbody.appendChild(contraRow);
+      // Initialize flatpickr for the new date input
+      flatpickr(contraRow.querySelector('.contra-date'), { dateFormat: "d/m/y", allowInput: true });
+  });
+
+  // --- Now, update the Summary and Footer Totals ---
+  // This logic is still correct because `totalContra` (the total sum) is correct.
+  
+  // Add Contra to "Summary - (খ) চলতি প্রাপ্তি"
+  const currentCashReceiptEl = document.getElementById('summary-current-cash-receipt');
+  let baselineCashReceipt = parseFloat(currentCashReceiptEl.dataset.baseline) || 0; 
+  let newCurrentCashReceipt = baselineCashReceipt + totalContra;
+  currentCashReceiptEl.value = convertToBangla(newCurrentCashReceipt.toFixed(2));
+
+  // Recalculate "Summary - (গ) মোট ফান্ড"
+  const openingCash = parseFloat(convertToEnglish(document.getElementById('summary-opening-cash').value)) || 0;
+  const totalCashFundEl = document.getElementById('summary-total-cash-fund');
+  let totalCashFund = openingCash + newCurrentCashReceipt; // This is (ক) + (খ)
+  totalCashFundEl.value = convertToBangla(totalCashFund.toFixed(2));
+  
+  // Add Contra to "Receipt Table Footer"
+  const receiptTotalEl = document.getElementById('receipt-cash-total');
+  const baselineReceiptTotal = parseFloat(receiptTotalEl.dataset.baseline || '0');
+  const newReceiptTotal = baselineReceiptTotal + totalContra;
+  receiptTotalEl.textContent = convertToBangla(newReceiptTotal.toFixed(2));
+  // ================== END OF FIX ==================
+
+  updateBalances(); // Update balances using contra-adjusted totals
+  saveSummaryData();
+  updateVerificationSummary(); // Update verification totals
+  return filteredExpenses;
+}
+function forceHideProductionBonusIfZero() {
+  const productionBonusCell = document.getElementById('col-production-bonus');
+  if (!productionBonusCell) return;
+
+  const totalText = productionBonusCell.textContent.trim();
+  const totalValue = parseFloat(convertToEnglish(totalText)) || 0;
+
+  if (totalValue === 0) {
+    const table = document.querySelector('.expense-table table');
+    if (!table) return;
+
+    const theadRow = table.querySelector('thead tr');
+    const tbodyRows = table.querySelectorAll('tbody tr');
+    const tfootRow = table.querySelector('tfoot tr');
+
+    const colIndex = 8; 
+
+    if (theadRow.children[colIndex]) {
+      theadRow.children[colIndex].style.display = 'none';
+    }
+    if (tfootRow.children[colIndex - 1]) {
+      tfootRow.children[colIndex - 1].style.display = 'none';
+    }
+    tbodyRows.forEach(row => {
+      if (row.children[colIndex]) {
+        row.children[colIndex].style.display = 'none';
+      }
+    });
+  }
+}
+
+// ================== MODIFIED FUNCTION (WITH BASELINE) ==================
+function calculateReceiptTotals() {
+  let openingBank = 0;
+  let openingCash = 0;
+  let currentBankReceipt = 0;
+  let currentCashReceipt = 0;
+  let totalBank = 0; // For the footer
+  let totalCash = 0; // For the footer
+
+  const rows = document.querySelectorAll('#receipt-body tr');
+  rows.forEach((tr, index) => {
+    const inputs = tr.querySelectorAll('input');
+    // This check is crucial: it only sums rows with 4 inputs,
+    // ignoring our programmatically-added contra row (which has 1 input).
+    if (inputs.length === 4) {
+      const bankVal = parseFloat(convertToEnglish(inputs[2].value)) || 0;
+      const cashVal = parseFloat(convertToEnglish(inputs[3].value)) || 0;
+      
+      if (index === 0) {
+        openingBank = bankVal;
+        openingCash = cashVal;
+      } else {
+        currentBankReceipt += bankVal;
+        currentCashReceipt += cashVal;
+      }
+      
+      totalBank += bankVal;
+      totalCash += cashVal;
+    }
+  });
+
+  const totalBankFund = openingBank + currentBankReceipt; // This is (গ)
+  const totalCashFund = openingCash + currentCashReceipt; // This is (গ)
+
+  // Populate the summary section (ক, খ, গ)
+  document.getElementById('summary-opening-bank').value = convertToBangla(openingBank.toFixed(2));
+  document.getElementById('summary-opening-cash').value = convertToBangla(openingCash.toFixed(2));
+  
+  // Store the "pure" cash receipt value (without contra) in a data attribute
+  const currentCashReceiptEl = document.getElementById('summary-current-cash-receipt');
+  currentCashReceiptEl.value = convertToBangla(currentCashReceipt.toFixed(2));
+  // Store baseline for summary
+  currentCashReceiptEl.dataset.baseline = currentCashReceipt.toFixed(2); 
+  
+  document.getElementById('summary-current-bank-receipt').value = convertToBangla(currentBankReceipt.toFixed(2));
+  document.getElementById('summary-total-bank-fund').value = convertToBangla(totalBankFund.toFixed(2));
+  document.getElementById('summary-total-cash-fund').value = convertToBangla(totalCashFund.toFixed(2));
+
+  // Update the receipt table footer (tfoot) to show the GRAND TOTAL
+  const receiptTotalEl = document.getElementById('receipt-cash-total');
+  receiptTotalEl.textContent = convertToBangla(totalCash.toFixed(2));
+  // Store baseline for table footer
+  receiptTotalEl.dataset.baseline = totalCash.toFixed(2); 
+  
+  document.getElementById('receipt-bank-total').textContent = convertToBangla(totalBank.toFixed(2));
+  
+  saveSummaryData();
+}
+
+function updateBalances() {
+  const totalBankFund = parseFloat(convertToEnglish(document.getElementById('summary-total-bank-fund').value)) || 0;
+  const totalCashFund = parseFloat(convertToEnglish(document.getElementById('summary-total-cash-fund').value)) || 0;
+  
+  const totalBankExpense = parseFloat(convertToEnglish(document.getElementById('total-bank-expense').value)) || 0;
+  const totalCashExpense = parseFloat(convertToEnglish(document.getElementById('total-cash-expense').value)) || 0;
+  
+  const bankBalance = totalBankFund - totalBankExpense;
+  const cashBalance = totalCashFund - totalCashExpense;
+  
+  document.getElementById('bank-balance').value = convertToBangla(bankBalance.toFixed(2));
+  document.getElementById('cash-balance').value = convertToBangla(cashBalance.toFixed(2));
+  
+  saveSummaryData();
+}
+
+// NEW FUNCTION
+function updateVerificationSummary() {
+  const totalBankExpense = parseFloat(convertToEnglish(document.getElementById('total-bank-expense').value)) || 0;
+  const totalCashExpense = parseFloat(convertToEnglish(document.getElementById('total-cash-expense').value)) || 0;
+  
+  const grandTotal = parseFloat(convertToEnglish(document.getElementById('expense-grand-total').textContent)) || 0;
+  const contraTotal = parseFloat(convertToEnglish(document.getElementById('expense-contra-total').textContent)) || 0;
+
+  const bankCashTotal = totalBankExpense + totalCashExpense;
+  const columnTotal = grandTotal + contraTotal;
+  const difference = bankCashTotal - columnTotal;
+
+  document.getElementById('verify-bank-cash-total').value = convertToBangla(bankCashTotal.toFixed(2));
+  document.getElementById('verify-column-total').value = convertToBangla(columnTotal.toFixed(2));
+  
+  const diffInput = document.getElementById('verify-difference');
+  if (diffInput) {
+      diffInput.value = convertToBangla(difference.toFixed(2));
+      const parentRow = diffInput.closest('.summary-row.total');
+      if (parentRow) {
+          if (Math.abs(difference) < 0.01) { // Check if difference is effectively zero
+              parentRow.style.background = '#28a745'; // Green for OK
+          } else {
+              parentRow.style.background = '#e74c3c'; // Red for error
+          }
+      }
+  }
+}
+
+function saveSummaryData() {
+  const summaryData = {
+    summaryOpeningBank: document.getElementById('summary-opening-bank').value,
+    summaryOpeningCash: document.getElementById('summary-opening-cash').value,
+    summaryCurrentBankReceipt: document.getElementById('summary-current-bank-receipt').value,
+    summaryCurrentCashReceipt: document.getElementById('summary-current-cash-receipt').value,
+    summaryTotalBankFund: document.getElementById('summary-total-bank-fund').value,
+    summaryTotalCashFund: document.getElementById('summary-total-cash-fund').value,
+    totalBankExpense: document.getElementById('total-bank-expense').value,
+    totalCashExpense: document.getElementById('total-cash-expense').value,
+    bankBalance: document.getElementById('bank-balance').value,
+    cashBalance: document.getElementById('cash-balance').value
+  };
+  localStorage.setItem('pettyCashSummary', JSON.stringify(summaryData));
+}
+
+function loadSummaryData() {
+  const summaryData = JSON.parse(localStorage.getItem('pettyCashSummary') || '{}');
+  
+  if (summaryData.summaryOpeningBank) document.getElementById('summary-opening-bank').value = summaryData.summaryOpeningBank;
+  if (summaryData.summaryOpeningCash) document.getElementById('summary-opening-cash').value = summaryData.summaryOpeningCash;
+  if (summaryData.summaryCurrentBankReceipt) document.getElementById('summary-current-bank-receipt').value = summaryData.summaryCurrentBankReceipt;
+  if (summaryData.summaryTotalBankFund) document.getElementById('summary-total-bank-fund').value = summaryData.summaryTotalBankFund;
+  if (summaryData.totalBankExpense) document.getElementById('total-bank-expense').value = summaryData.totalBankExpense;
+  if (summaryData.totalCashExpense) document.getElementById('total-cash-expense').value = summaryData.totalCashExpense;
+  if (summaryData.bankBalance) document.getElementById('bank-balance').value = summaryData.bankBalance;
+  if (summaryData.cashBalance) document.getElementById('bank-balance').value = summaryData.bankBalance;
+
+  // Load contra-adjusted values, but they will be recalculated
+  if (summaryData.summaryCurrentCashReceipt) {
+      document.getElementById('summary-current-cash-receipt').value = summaryData.summaryCurrentCashReceipt;
+  }
+  if (summaryData.summaryTotalCashFund) {
+      document.getElementById('summary-total-cash-fund').value = summaryData.summaryTotalCashFund;
+  }
+}
+
+function saveReceipts() {
+  const receipts = [];
+  document.querySelectorAll('#receipt-body tr').forEach(tr => {
+    // Only save rows that have 4 inputs (i.e., ignore the static contra row)
+    const inputs = tr.querySelectorAll('input');
+    if (inputs.length === 4) {
+      const dateVal = inputs[0].value.trim();
+      const detailsVal = inputs[1].value.trim();
+      const bankVal = convertToEnglish(inputs[2].value.trim());
+      const cashVal = convertToEnglish(inputs[3].value.trim());
+      
+      if (dateVal || detailsVal || (bankVal && bankVal !== '0') || (cashVal && cashVal !== '0')) {
+        receipts.push({
+          date: dateVal,
+          details: detailsVal,
+          bank: bankVal,
+          cash: cashVal
+        });
+      }
+    }
+  });
+  localStorage.setItem('pettyCashReceipts', JSON.stringify(receipts));
+}
+
+// ***FIX: UPDATED FUNCTION***
+function generateVoucherNumbers() {
+  const tbody = document.getElementById('expense-body');
+  const rows = tbody.querySelectorAll('tr');
+  if (rows.length === 0) {
+    alert('কোন ডেটা নেই। প্রথমে ডেটা এন্ট্রি থেকে খরচ যোগ করুন।');
+    return;
+  }
+  
+  const firstInput = rows[0].children[2].querySelector('input'); // Column index 2
+  if (!firstInput) return; // Safety check
+
+  let startNum = parseInt(convertToEnglish(firstInput.value), 10);
+  
+  if (isNaN(startNum)) {
+    // If first input is empty, find the max voucher number from ALL expenses
+    const expenses = JSON.parse(localStorage.getItem('pettyCashExpenses') || '[]');
+    let maxVoucher = 0;
+    expenses.forEach(e => { 
+      const v = parseInt(e.voucherNo, 10); 
+      if (!isNaN(v) && v > maxVoucher) maxVoucher = v; 
+    });
+    startNum = maxVoucher + 1;
+  }
+  
+  rows.forEach((row, index) => {
+    const voucherCell = row.children[2]; // Column index 2
+    if (voucherCell) {
+      const input = voucherCell.querySelector('input');
+      if (input) {
+        input.value = convertToBangla(startNum + index);
+      }
+    }
+  });
+  saveExpenseExtras(); // Save the new numbers
+}
+
+function generateCheckNumbers() {
+  const tbody = document.getElementById('expense-body');
+  const rows = tbody.querySelectorAll('tr');
+  if (rows.length === 0) {
+    alert('কোন ডেটা নেই। প্রথমে ডেটা এন্ট্রি থেকে খরচ যোগ করুন।');
+    return;
+  }
+  const firstInput = rows[0].children[4].querySelector('input');
+  let startNum = parseInt(convertToEnglish(firstInput.value), 10);
+  if (isNaN(startNum)) {
+    startNum = 1;
+  }
+  rows.forEach((row, index) => {
+    const checkCell = row.children[4];
+    if (checkCell) {
+      const input = checkCell.querySelector('input');
+      if (input) {
+        input.value = convertToBangla(startNum + index);
+      }
+    }
+  });
+  saveExpenseExtras();
+}
+
+// ***FIX: REPLACED FUNCTION***
+function saveExpenseExtras() {
+  const expenses = JSON.parse(localStorage.getItem('pettyCashExpenses') || '[]');
+  const rows = document.getElementById('expense-body').querySelectorAll('tr');
+  
+  // Create a map to store the new values for each group key
+  const updatedGroupData = {};
+
+  rows.forEach((row) => {
+    const groupKey = row.dataset.groupKey;
+    if (!groupKey) return; // Skip if row has no group key
+
+    const voucherInput = row.children[2].querySelector('input');
+    const checkInput = row.children[4].querySelector('input');
+    const contraInput = row.children[row.children.length - 1].querySelector('input');
+    
+    const voucher = voucherInput ? convertToEnglish(voucherInput.value.trim()) : '';
+    const check = checkInput ? convertToEnglish(checkInput.value.trim()) : '';
+    // Save the manually entered contra value
+    const contraVal = contraInput ? convertToEnglish(contraInput.value.trim()) : '0';
+
+    // Store the values to be applied
+    updatedGroupData[groupKey] = { voucher, check, contraVal };
+  });
+  
+  // Iterate through the master expenses list ONCE
+  expenses.forEach(entry => {
+    let key;
+    const isCommission = entry.expenseColumn === '১ম বর্ষ কমিশন' || entry.expenseColumn === 'নবায়ন কমিশন';
+
+    if (isCommission && entry.sessionId) {
+         key = `commission_session_${entry.sessionId}`;
+    } else {
+         // This covers non-commission entries, and old commissions without a session
+         // Assumes entry.id is persistent and unique
+         key = `unique_${entry.id}`;
+    }
+
+    // If this entry's group key is in our map, update the entry
+    if (updatedGroupData[key]) {
+        entry.voucherNo = updatedGroupData[key].voucher;
+        entry.checkNo = updatedGroupData[key].check;
+        // This 'contraAmount' is the manually entered value
+        entry.contraAmount = updatedGroupData[key].contraVal; 
+    }
+  });
+  
+  // Save the entire updated list back to localStorage
+  localStorage.setItem('pettyCashExpenses', JSON.stringify(expenses));
+}
+
+function reloadDataAndCalculate() {
+  loadReceipts();
+  calculateReceiptTotals();
+  loadPettyCashStatement();
+  // updateVerificationSummary() is called at the end of loadPettyCashStatement()
+}
+
+function generateReport() {
+  reloadDataAndCalculate();
+  saveReceipts();
+  saveSummaryData();
+  saveToArchive();
+
+  let reportWindow = window.open('', '_blank');
+  reportWindow.document.title = 'পেটিক্যাশ স্টেটমেন্ট';
+  let reportDoc = reportWindow.document;
+  reportDoc.open();
+  reportDoc.write('<!DOCTYPE html><html lang="bn"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>পেটিক্যাশ স্টেটমেন্ট</title>');
+  
+  document.querySelectorAll('head link[rel="stylesheet"], head style').forEach(node => {
+    reportDoc.head.appendChild(node.cloneNode(true));
+  });
+  
+  reportDoc.write('</head><body>');
+  
+  let bodyClone = document.body.cloneNode(true);
+  bodyClone.querySelector('.sidebar')?.remove();
+  
+  let containerClone = bodyClone.querySelector('.container');
+  
+  containerClone.querySelectorAll('input').forEach(input => {
+    let span = document.createElement('span');
+    let text = input.value || '০';
+    // Special handling for the contra date, which might be empty
+    if (input.classList.contains('contra-date') && !input.value) {
+        text = '-'; // Show a dash if no date was entered
+    } else if (!/[০-৯]/.test(text) && /[0-9]/.test(text)) {
+      text = convertToBangla(text);
+    }
+    // Handle empty contra inputs in expense table
+    if (input.classList.contains('contra-input') && text === '০') {
+        text = '';
+    }
+
+    span.textContent = text.trim();
+    
+    let align = 'center';
+    if (input.closest('.summary-value')) {
+      align = 'right';
+    } else if (input.closest('td') || input.closest('th')) {
+      align = 'center';
+    }
+    
+    span.style.cssText = `display:inline-block;width:100%;text-align:${align};font-weight:bold;color:#000 !important;font-family:"Kalpurush","SolaimanLipi","Hind Siliguri","Roboto",sans-serif !important;`;
+    input.parentNode.replaceChild(span, input);
+  });
+  
+  containerClone.querySelectorAll('button').forEach(btn => {
+    if (btn.textContent.includes('Print') || btn.onclick && btn.onclick.toString().includes('printReport')) {
+      btn.setAttribute('onclick', 'window.print()');
+    } else {
+      btn.remove();
+    }
+  });
+  containerClone.querySelectorAll('.receipt-buttons').forEach(el => el.remove());
+  
+  let buttonGroup = containerClone.querySelector('.button-group');
+  if (buttonGroup) {
+    buttonGroup.innerHTML = '<button onclick="window.print()" style="font-size: 18px; padding: 15px 30px; background: #3A358E; color: white; border: none; border-radius: 5px; cursor: pointer;">Print</button>';
+  }
+  
+  let mainWrapper = containerClone.querySelector('.main-sections-wrapper');
+  mainWrapper.classList.add('report-tables-wrapper');
+  
+  reportDoc.write(bodyClone.outerHTML);
+  reportDoc.write('</body></html>');
+  reportDoc.close();
+}
+
+function saveToArchive() {
+  const archives = JSON.parse(localStorage.getItem('pettyCashArchives') || '[]');
+  const startDate = document.getElementById('start-date').value;
+  const endDate = document.getElementById('end-date').value;
+  const officeName = document.getElementById('office-name').value;
+  const officeCode = document.getElementById('office-code').value;
+  const receipts = [];
+  document.querySelectorAll('#receipt-body tr').forEach(tr => {
+    // Only archive rows with 4 inputs (ignore static contra row)
+    const inputs = tr.querySelectorAll('input');
+    if (inputs.length === 4) {
+      receipts.push({
+        date: inputs[0].value.trim(),
+        details: inputs[1].value.trim(),
+        bank: convertToEnglish(inputs[2].value.trim()),
+        cash: convertToEnglish(inputs[3].value.trim())
+      });
+    }
+  });
+  const expenses = loadPettyCashStatement();
+  
+  const openingBank = convertToEnglish(document.getElementById('summary-opening-bank').value || '0');
+  const openingCash = convertToEnglish(document.getElementById('summary-opening-cash').value || '0');
+  
+  const totals = {
+    summaryOpeningBank: openingBank,
+    summaryOpeningCash: openingCash,
+    summaryCurrentBankReceipt: convertToEnglish(document.getElementById('summary-current-bank-receipt').value),
+    summaryCurrentCashReceipt: convertToEnglish(document.getElementById('summary-current-cash-receipt').value),
+    summaryTotalBankFund: convertToEnglish(document.getElementById('summary-total-bank-fund').value),
+    summaryTotalCashFund: convertToEnglish(document.getElementById('summary-total-cash-fund').value),
+    totalBankExpense: convertToEnglish(document.getElementById('total-bank-expense').value),
+    totalCashExpense: convertToEnglish(document.getElementById('total-cash-expense').value),
+    bankBalance: convertToEnglish(document.getElementById('bank-balance').value),
+    cashBalance: convertToEnglish(document.getElementById('bank-balance').value)
+  };
+  
+  const archiveName = `পেটিক্যাশ স্টেটমেন্ট ${startDate} - ${endDate}`;
+  const newArchive = {
+    id: Date.now(),
+    createdAt: new Date().toISOString(),
+    name: archiveName,
+    data: { officeName, officeCode, startDate, endDate, receipts, expenses, totals, openingBank, openingCash } 
+  };
+  archives.push(newArchive);
+  localStorage.setItem('pettyCashArchives', JSON.stringify(archives));
+  alert('স্টেটমেন্ট সফলভাবে আর্কাইভ করা হয়েছে!');
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('office-name').value = localStorage.getItem('officeName') || '';
+  document.getElementById('start-date').value = localStorage.getItem('startDate') || '';
+  document.getElementById('end-date').value = localStorage.getItem('endDate') || '';
+  document.getElementById('office-code').value = localStorage.getItem('officeCode') || '';
+  document.getElementById('statement-no').value = localStorage.getItem('statementNo') || '';
+  document.getElementById('office-name').addEventListener('change', () => {
+    localStorage.setItem('officeName', document.getElementById('office-name').value);
+  });
+  
+  const reloadOnDateChange = () => {
+    localStorage.setItem('startDate', document.getElementById('start-date').value);
+    localStorage.setItem('endDate', document.getElementById('end-date').value);
+    reloadDataAndCalculate();
+  };
+  
+  document.getElementById('start-date').addEventListener('change', reloadOnDateChange);
+  document.getElementById('end-date').addEventListener('change', reloadOnDateChange);
+  
+  document.getElementById('office-code').addEventListener('change', () => {
+    localStorage.setItem('officeCode', document.getElementById('office-code').value);
+  });
+  document.getElementById('statement-no').addEventListener('change', () => {
+    localStorage.setItem('statementNo', document.getElementById('statement-no').value);
+  });
+  
+  loadSummaryData();
+  loadReceipts();
+  
+  flatpickr("#start-date", { dateFormat: "d/m/y", allowInput: true });
+  flatpickr("#end-date", { dateFormat: "d/m/y", allowInput: true });
+  
+  calculateReceiptTotals();
+  loadPettyCashStatement();
+  updateVerificationSummary(); // <-- Call on initial load
+  
+  document.getElementById('receipt-body').addEventListener('input', (e) => {
+    // Only save and reload if the input is in a row with 4 inputs
+    // (i.e., not the static contra row)
+    if (e.target.closest('tr') && e.target.closest('tr').querySelectorAll('input').length === 4) {
+      saveReceipts();
+      // Must reload all data to recalculate contra
+      reloadDataAndCalculate();
+    }
+  });
+  
+  document.getElementById('expense-body').addEventListener('input', (e) => {
+    if (e.target.type === 'text') {
+      saveExpenseExtras();
+      if (e.target.classList.contains('contra-input')) {
+          // Reload all data to recalculate contra
+          reloadDataAndCalculate();
+      }
+    }
+  });
+  
+  document.querySelectorAll('.amount-input').forEach(input => {
+    input.addEventListener('input', (e) => {
+      e.target.value = e.target.value.replace(/[^০-৯.]/g, '');
+    });
+  });
+});
+</script>
+</body>
+</html>
