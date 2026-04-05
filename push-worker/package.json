@@ -1,0 +1,14 @@
+{
+  "name": "push-worker",
+  "version": "1.0.0",
+  "description": "GitHub Actions worker — reads Firestore push subscriptions and sends Web Push",
+  "main": "send-push.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node send-push.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.0.0",
+    "web-push": "^3.6.7"
+  }
+}
