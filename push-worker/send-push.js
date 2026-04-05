@@ -5,20 +5,16 @@
  * Runs inside GitHub Actions every 2 hours (Dhaka business hours).
  * Steps:
  *   1. Connect to Firestore using Firebase Admin SDK
- *   2. Read ALL users who have a saved push subscription
- *   3. For each user, read their pending tasks
- *   4. If they have pending tasks → send a Web Push notification
- *      to their device (phone/desktop) via Web Push protocol
+ *   2. Read ALL users
+ *   3. For each user, read ALL their device subscriptions
+ *   4. For each user, read their pending tasks
+ *   5. If they have pending tasks → send Web Push to ALL devices
  *
  * Firestore path: artifacts/default-app-id/users/{uid}/...
  *
- * FIXES APPLIED:
- *   - FIX-1: keys.p256dh and keys.auth now read correctly from
- *     Firestore whether stored as nested map OR flat fields.
- *   - FIX-2: Detailed error logging (statusCode + body) so you
- *     can see exactly why a push fails.
- *   - FIX-3: Subscription validity check — skips if keys are missing.
- *   - FIX-4: webpush TTL option added (86400 = 24 hours).
+ * MULTI-DEVICE: Subscriptions are stored in a sub-collection:
+ *   users/{uid}/pushSubscriptions/{endpointHash}
+ * This allows phone AND desktop to both receive notifications.
  * ============================================================
  */
 
@@ -67,44 +63,23 @@ console.log('🔑 VAPID Public  :', process.env.VAPID_PUBLIC_KEY.slice(0, 20) + 
 // ── 3. Helper: get today's date string (YYYY-MM-DD) in Dhaka time ──
 
 function getTodayStr() {
-    // Use Dhaka timezone (UTC+6) so "today" matches the user's local date
-    const now = new Date();
+    const now   = new Date();
     const dhaka = new Date(now.getTime() + 6 * 60 * 60 * 1000);
     return dhaka.getUTCFullYear() + '-' +
         String(dhaka.getUTCMonth() + 1).padStart(2, '0') + '-' +
         String(dhaka.getUTCDate()).padStart(2, '0');
 }
 
-// ── 4. FIX-1: Safe key extractor ─────────────────────────────
-/**
- * Firestore may store the subscription in two ways:
- *
- *   A) Nested map (standard):
- *      { endpoint, keys: { p256dh, auth } }
- *
- *   B) Flat fields (some older saves):
- *      { endpoint, 'keys.p256dh': '...', 'keys.auth': '...' }
- *
- * This function handles both.
- */
-function extractKeys(subscription) {
-    // Nested map (normal case)
-    if (subscription.keys && subscription.keys.p256dh && subscription.keys.auth) {
-        return {
-            p256dh: subscription.keys.p256dh,
-            auth:   subscription.keys.auth
-        };
-    }
+// ── 4. Safe key extractor ─────────────────────────────────────
 
-    // Flat fields fallback
+function extractKeys(subscription) {
+    if (subscription.keys && subscription.keys.p256dh && subscription.keys.auth) {
+        return { p256dh: subscription.keys.p256dh, auth: subscription.keys.auth };
+    }
     const p256dh = subscription['keys.p256dh'] || null;
     const auth   = subscription['keys.auth']   || null;
-
-    if (p256dh && auth) {
-        return { p256dh, auth };
-    }
-
-    return null;  // keys not found at all
+    if (p256dh && auth) return { p256dh, auth };
+    return null;
 }
 
 // ── 5. Main function ──────────────────────────────────────────
@@ -114,12 +89,11 @@ async function run() {
     console.log('📅 Today (Dhaka):', getTodayStr());
 
     const today = getTodayStr();
-    let totalSent   = 0;
-    let totalFailed = 0;
+    let totalSent    = 0;
+    let totalFailed  = 0;
     let totalSkipped = 0;
 
     try {
-        // Firestore path: artifacts > default-app-id > users > {uid}
         const usersRef  = db.collection('artifacts').doc('default-app-id').collection('users');
         const usersSnap = await usersRef.get();
 
@@ -134,36 +108,19 @@ async function run() {
             const uid = userDoc.id;
             console.log(`── Processing user: ${uid}`);
 
-            // ── Step A: Read this user's push subscription ──
-            const subRef  = usersRef.doc(uid).collection('data').doc('pushSubscription');
-            const subSnap = await subRef.get();
+            // ── Step A: Read ALL device subscriptions for this user ──
+            const subsRef  = usersRef.doc(uid).collection('pushSubscriptions');
+            const subsSnap = await subsRef.get();
 
-            if (!subSnap.exists) {
-                console.log(`  ⏭️  No pushSubscription document — skipping.`);
+            if (subsSnap.empty) {
+                console.log(`  ⏭️  No push subscriptions — skipping.`);
                 totalSkipped++;
                 continue;
             }
 
-            const subscription = subSnap.data();
+            console.log(`  📱 Found ${subsSnap.size} device subscription(s).`);
 
-            if (!subscription.endpoint) {
-                console.log(`  ⏭️  pushSubscription exists but has no endpoint — skipping.`);
-                totalSkipped++;
-                continue;
-            }
-
-            // FIX-1: Extract keys safely
-            const keys = extractKeys(subscription);
-            if (!keys) {
-                console.warn(`  ⚠️  pushSubscription missing p256dh/auth keys — skipping.`);
-                console.warn(`      Raw subscription data:`, JSON.stringify(subscription, null, 2));
-                totalSkipped++;
-                continue;
-            }
-
-            console.log(`  ✅ Subscription found. Endpoint: ${subscription.endpoint.slice(0, 60)}...`);
-
-            // ── Step B: Read this user's pending tasks ──
+            // ── Step B: Read pending tasks ──
             const tasksRef  = usersRef.doc(uid).collection('tasks');
             const tasksSnap = await tasksRef.where('status', '!=', 'done').get();
 
@@ -171,13 +128,11 @@ async function run() {
             tasksSnap.forEach(docSnap => {
                 const data = docSnap.data();
 
-                // Tasks with no date are always pending
                 if (!data.date) {
                     pendingTasks.push(data.title || 'Untitled Task');
                     return;
                 }
 
-                // Parse date — handles Firestore Timestamp or string
                 let taskDateStr;
                 if (data.date.toDate && typeof data.date.toDate === 'function') {
                     const d = data.date.toDate();
@@ -201,7 +156,7 @@ async function run() {
 
             console.log(`  📋 Pending tasks (${pendingTasks.length}):`, pendingTasks.slice(0, 3));
 
-            // ── Step C: Build the push payload ──
+            // ── Step C: Build payload ──
             const count      = pendingTasks.length;
             const firstTitle = pendingTasks[0].slice(0, 50);
 
@@ -211,41 +166,45 @@ async function run() {
                 count: count
             });
 
-            // ── Step D: Build the subscription object ──
-            const pushSub = {
-                endpoint: subscription.endpoint,
-                keys: {
-                    p256dh: keys.p256dh,
-                    auth:   keys.auth
+            // ── Step D: Send to ALL devices ──
+            for (const subDoc of subsSnap.docs) {
+                const subscription = subDoc.data();
+
+                if (!subscription.endpoint) {
+                    console.warn(`  ⚠️  Device ${subDoc.id}: no endpoint — skipping.`);
+                    continue;
                 }
-            };
 
-            // ── Step E: Send the Web Push ──
-            try {
-                await webpush.sendNotification(pushSub, payload, {
-                    TTL: 86400   // FIX-4: keep in push service queue for 24 hours
-                });
-                console.log(`  📨 Push sent successfully — ${count} pending task(s).`);
-                totalSent++;
+                const keys = extractKeys(subscription);
+                if (!keys) {
+                    console.warn(`  ⚠️  Device ${subDoc.id}: missing keys — skipping.`);
+                    continue;
+                }
 
-            } catch (pushErr) {
-                // FIX-2: Log full error details
-                console.error(`  ❌ Push FAILED for user ${uid}`);
-                console.error(`     Message    : ${pushErr.message}`);
-                console.error(`     Status Code: ${pushErr.statusCode}`);
-                console.error(`     Body       : ${pushErr.body}`);
-                console.error(`     Endpoint   : ${subscription.endpoint.slice(0, 80)}...`);
+                const pushSub = {
+                    endpoint: subscription.endpoint,
+                    keys: { p256dh: keys.p256dh, auth: keys.auth }
+                };
 
-                if (pushErr.statusCode === 410 || pushErr.statusCode === 404) {
-                    // Subscription is expired or invalid — remove it so we don't retry
-                    console.warn(`  🗑️  Subscription expired (${pushErr.statusCode}). Removing from Firestore.`);
-                    await subRef.delete();
-                } else {
-                    totalFailed++;
+                try {
+                    await webpush.sendNotification(pushSub, payload, { TTL: 86400 });
+                    console.log(`  📨 Sent to device ${subDoc.id.slice(0, 12)}... — OK`);
+                    totalSent++;
+
+                } catch (pushErr) {
+                    console.error(`  ❌ FAILED for device ${subDoc.id.slice(0, 12)}...`);
+                    console.error(`     Status: ${pushErr.statusCode} — ${pushErr.body}`);
+
+                    if (pushErr.statusCode === 410 || pushErr.statusCode === 404) {
+                        console.warn(`  🗑️  Subscription expired — removing from Firestore.`);
+                        await subDoc.ref.delete();
+                    } else {
+                        totalFailed++;
+                    }
                 }
             }
 
-            console.log(''); // blank line between users
+            console.log('');
         }
 
     } catch (err) {
