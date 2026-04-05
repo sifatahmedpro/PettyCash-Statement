@@ -10,7 +10,7 @@
  *   4. If they have pending tasks → send a Web Push notification
  *      to their device (phone/desktop) via Web Push protocol
  *
- * This file never needs to change when you add new HTML pages.
+ * Firestore path: artifacts/default-app-id/users/{uid}/...
  * ============================================================
  */
 
@@ -20,10 +20,9 @@ const admin   = require('firebase-admin');
 const webpush = require('web-push');
 
 // ── 1. Firebase Admin init ────────────────────────────────────
-// Reads credentials from GitHub Actions secrets (environment variables)
 
 const privateKey = process.env.FIREBASE_PRIVATE_KEY
-    ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')   // GitHub escapes newlines
+    ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
     : null;
 
 if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL || !privateKey) {
@@ -42,7 +41,6 @@ admin.initializeApp({
 const db = admin.firestore();
 
 // ── 2. VAPID keys setup ───────────────────────────────────────
-// VAPID keys identify your server to browsers (security requirement)
 
 if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY || !process.env.VAPID_SUBJECT) {
     console.error('❌ Missing VAPID keys. Check GitHub Secrets.');
@@ -50,7 +48,7 @@ if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY || !process.
 }
 
 webpush.setVapidDetails(
-    process.env.VAPID_SUBJECT,     // e.g. mailto:you@gmail.com
+    process.env.VAPID_SUBJECT,
     process.env.VAPID_PUBLIC_KEY,
     process.env.VAPID_PRIVATE_KEY
 );
@@ -74,13 +72,9 @@ async function run() {
     let totalFailed = 0;
 
     try {
-        // ── Step A: Find all users who have a push subscription saved ──
-        // FIX: Changed 'default-app-id' → 'default' to match the actual
-        // Firestore path used by task-manager-backend.js:
-        //   artifacts/default/users/{uid}/tasks
-        // Previously 'default-app-id' caused zero users/tasks to be found.
-
-        const usersRef = db.collection('artifacts').doc('default').collection('users');
+        // Path confirmed from Firebase console:
+        // artifacts > default-app-id > users > {uid}
+        const usersRef = db.collection('artifacts').doc('default-app-id').collection('users');
         const usersSnap = await usersRef.get();
 
         if (usersSnap.empty) {
@@ -145,7 +139,6 @@ async function run() {
             });
 
             // ── Step E: Send the Web Push ──
-            // Build a proper PushSubscription object for web-push library
             const pushSub = {
                 endpoint: subscription.endpoint,
                 keys: {
@@ -159,7 +152,6 @@ async function run() {
                 console.log(`  📨 Sent push to user ${uid} — ${count} pending task(s).`);
                 totalSent++;
             } catch (pushErr) {
-                // If subscription is expired/invalid, remove it from Firestore
                 if (pushErr.statusCode === 410 || pushErr.statusCode === 404) {
                     console.warn(`  ⚠️  Subscription expired for user ${uid}. Removing from Firestore.`);
                     await subRef.delete();
