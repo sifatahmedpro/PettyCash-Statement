@@ -75,10 +75,12 @@ async function run() {
 
     try {
         // ── Step A: Find all users who have a push subscription saved ──
-        // Firestore path: artifacts/default/users/{uid}/data/pushSubscription
-        // We query by checking for documents that have an 'endpoint' field.
+        // FIX: Changed 'default-app-id' → 'default' to match the actual
+        // Firestore path used by task-manager-backend.js:
+        //   artifacts/default/users/{uid}/tasks
+        // Previously 'default-app-id' caused zero users/tasks to be found.
 
-        const usersRef = db.collection('artifacts').doc('default-app-id').collection('users');
+        const usersRef = db.collection('artifacts').doc('default').collection('users');
         const usersSnap = await usersRef.get();
 
         if (usersSnap.empty) {
