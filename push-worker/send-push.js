@@ -78,7 +78,7 @@ async function run() {
         // Firestore path: artifacts/default/users/{uid}/data/pushSubscription
         // We query by checking for documents that have an 'endpoint' field.
 
-        const usersRef = db.collection('artifacts').doc('default').collection('users');
+        const usersRef = db.collection('artifacts').doc('default-app-id').collection('users');
         const usersSnap = await usersRef.get();
 
         if (usersSnap.empty) {
