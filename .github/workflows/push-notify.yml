@@ -1,0 +1,57 @@
+## ============================================================
+## .github/workflows/push-notify.yml
+##
+## Runs every 2 hours (10:00, 12:00, 14:00, 16:00 Dhaka time)
+## Reads push subscriptions from Firestore and sends Web Push.
+##
+## HOW TO SET UP:
+##   1. Go to your GitHub repo → Settings → Secrets and variables → Actions
+##   2. Add these Repository Secrets (see SETUP-GUIDE.md for how to get them):
+##      - FIREBASE_PROJECT_ID
+##      - FIREBASE_CLIENT_EMAIL
+##      - FIREBASE_PRIVATE_KEY
+##      - VAPID_PUBLIC_KEY
+##      - VAPID_PRIVATE_KEY
+##      - VAPID_SUBJECT        (e.g.  mailto:you@gmail.com)
+## ============================================================
+
+name: Web Push Notifications
+
+on:
+  schedule:
+    # Dhaka is UTC+6. Target: 10:00, 12:00, 14:00, 16:00 Dhaka = 04:00, 06:00, 08:00, 10:00 UTC
+    - cron: '0 4 * * *'    # 10:00 Dhaka
+    - cron: '0 6 * * *'    # 12:00 Dhaka
+    - cron: '0 8 * * *'    # 14:00 Dhaka
+    - cron: '0 10 * * *'   # 16:00 Dhaka
+
+  # Allows you to run this manually from the Actions tab for testing
+  workflow_dispatch:
+
+jobs:
+  send-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: push-worker
+
+      - name: Send push notifications
+        env:
+          FIREBASE_PROJECT_ID:  ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
+          FIREBASE_PRIVATE_KEY:  ${{ secrets.FIREBASE_PRIVATE_KEY }}
+          VAPID_PUBLIC_KEY:      ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY:     ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_SUBJECT:         ${{ secrets.VAPID_SUBJECT }}
+        run: node send-push.js
+        working-directory: push-worker
