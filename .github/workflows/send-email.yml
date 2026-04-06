@@ -1,0 +1,50 @@
+# ============================================================
+# .github/workflows/send-email.yml
+#
+# Fires the email digest worker at:
+#   8:00 AM Dhaka  = 02:00 UTC
+#   8:00 PM Dhaka  = 14:00 UTC
+#
+# GitHub Actions cron uses UTC.
+# Dhaka (BST) = UTC+6
+# ============================================================
+
+name: Email Digest
+
+on:
+  schedule:
+    - cron: '0 2 * * *'    # 8:00 AM Dhaka (UTC+6)
+    - cron: '0 14 * * *'   # 8:00 PM Dhaka (UTC+6)
+
+  # Allow manual trigger from the Actions tab for testing
+  workflow_dispatch:
+
+jobs:
+  send-email:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          cd email-worker
+          npm install
+
+      - name: Run email worker
+        env:
+          FIREBASE_PROJECT_ID:   ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
+          FIREBASE_PRIVATE_KEY:  ${{ secrets.FIREBASE_PRIVATE_KEY }}
+          EMAILJS_SERVICE_ID:    ${{ secrets.EMAILJS_SERVICE_ID }}
+          EMAILJS_TEMPLATE_ID:   ${{ secrets.EMAILJS_TEMPLATE_ID }}
+          EMAILJS_PUBLIC_KEY:    ${{ secrets.EMAILJS_PUBLIC_KEY }}
+          EMAILJS_PRIVATE_KEY:   ${{ secrets.EMAILJS_PRIVATE_KEY }}
+        run: node email-worker/send-email.js
