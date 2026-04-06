@@ -1,31 +1,38 @@
 ## ============================================================
-## .github/workflows/push-notify.yml
+## .github/workflows/push-notify.yml  —  v2.0
 ##
-## Runs every 2 hours (10:00, 12:00, 14:00, 16:00 Dhaka time)
-## Reads push subscriptions from Firestore and sends Web Push.
+## Runs every 30 minutes between 06:00–22:00 Dhaka time
+## (= 00:00–16:00 UTC). The Node.js script itself also has an
+## hour-range guard so accidental triggers outside hours are safe.
+##
+## NEW in v2:
+##   - Runs all day (every 30 min) instead of 4 fixed hours
+##   - Seen-today system: same status won't be pushed twice a day
+##   - Snooze system: user can snooze reminders for 1 hour
+##     from inside the app; the worker checks Firestore for it.
 ##
 ## HOW TO SET UP:
 ##   1. Go to your GitHub repo → Settings → Secrets and variables → Actions
-##   2. Add these Repository Secrets (see SETUP-GUIDE.md for how to get them):
+##   2. Add these Repository Secrets:
 ##      - FIREBASE_PROJECT_ID
 ##      - FIREBASE_CLIENT_EMAIL
 ##      - FIREBASE_PRIVATE_KEY
 ##      - VAPID_PUBLIC_KEY
 ##      - VAPID_PRIVATE_KEY
-##      - VAPID_SUBJECT        (e.g.  mailto:you@gmail.com)
+##      - VAPID_SUBJECT        (e.g. mailto:you@gmail.com)
 ## ============================================================
 
 name: Web Push Notifications
 
 on:
   schedule:
-    # Dhaka is UTC+6. Target: 10:00, 12:00, 14:00, 16:00 Dhaka = 04:00, 06:00, 08:00, 10:00 UTC
-    - cron: '0 4 * * *'    # 10:00 Dhaka
-    - cron: '0 6 * * *'    # 12:00 Dhaka
-    - cron: '0 8 * * *'    # 14:00 Dhaka
-    - cron: '0 10 * * *'   # 16:00 Dhaka
+    # Every 30 minutes from 00:00 UTC to 16:00 UTC
+    # = 05:00–23:59 Dhaka (UTC+6). Resting hours 00:00–05:00 Dhaka are
+    # also blocked inside send-push.js as a second safety layer.
+    - cron: '0,30 23 * * *'    # 23:00–23:30 UTC = 05:00–05:30 Dhaka
+    - cron: '0,30 0-17 * * *'  # 00:00–17:30 UTC = 06:00–23:30 Dhaka
 
-  # Allows you to run this manually from the Actions tab for testing
+  # Run manually from the Actions tab for testing
   workflow_dispatch:
 
 jobs:
@@ -39,7 +46,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '20'
 
       - name: Install dependencies
         run: npm install
@@ -47,7 +54,7 @@ jobs:
 
       - name: Send push notifications
         env:
-          FIREBASE_PROJECT_ID:  ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_PROJECT_ID:   ${{ secrets.FIREBASE_PROJECT_ID }}
           FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
           FIREBASE_PRIVATE_KEY:  ${{ secrets.FIREBASE_PRIVATE_KEY }}
           VAPID_PUBLIC_KEY:      ${{ secrets.VAPID_PUBLIC_KEY }}
