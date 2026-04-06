@@ -1,20 +1,29 @@
 /**
  * ============================================================
- * push-worker/send-push.js
+ * push-worker/send-push.js  —  v2.0 (WHOLE-DAY + SEEN + SNOOZE)
  *
- * Runs inside GitHub Actions every 2 hours (Dhaka business hours).
- * Steps:
- *   1. Connect to Firestore using Firebase Admin SDK
- *   2. Read ALL users
- *   3. For each user, read ALL their device subscriptions
- *   4. For each user, read their pending tasks
- *   5. If they have pending tasks → send Web Push to ALL devices
+ * WHAT CHANGED vs v1:
+ *   • Runs every 30 min all day (06:00–22:00 Dhaka) instead of
+ *     only 4 fixed hours. Update the cron schedule in
+ *     push-notify.yml accordingly (see comment there).
  *
- * Firestore path: artifacts/default-app-id/users/{uid}/...
+ *   • SEEN-TODAY system: once a user has "seen" (acknowledged)
+ *     a specific status key today, that push is suppressed for
+ *     the rest of the day. Seen keys are stored in Firestore:
+ *       users/{uid}/pushState/seenToday
+ *     The document resets automatically at midnight (Dhaka).
  *
- * MULTI-DEVICE: Subscriptions are stored in a sub-collection:
- *   users/{uid}/pushSubscriptions/{endpointHash}
- * This allows phone AND desktop to both receive notifications.
+ *   • SNOOZE system: a user can snooze from their device.
+ *     The snooze timestamp is stored in Firestore:
+ *       users/{uid}/pushState/snooze
+ *     If snoozeUntil > now  →  skip all pushes for that user.
+ *     Snooze duration = 1 hour (set by the client app).
+ *
+ * Firestore paths (read by this worker):
+ *   artifacts/default-app-id/users/{uid}/pushSubscriptions/{hash}
+ *   artifacts/default-app-id/users/{uid}/tasks/{taskId}
+ *   artifacts/default-app-id/users/{uid}/pushState/seenToday
+ *   artifacts/default-app-id/users/{uid}/pushState/snooze
  * ============================================================
  */
 
@@ -60,14 +69,22 @@ webpush.setVapidDetails(
 console.log('🔑 VAPID Subject :', process.env.VAPID_SUBJECT);
 console.log('🔑 VAPID Public  :', process.env.VAPID_PUBLIC_KEY.slice(0, 20) + '...');
 
-// ── 3. Helper: get today's date string (YYYY-MM-DD) in Dhaka time ──
+// ── 3. Time helpers (Dhaka = UTC+6) ──────────────────────────
+
+function getDhakaDate() {
+    const now   = new Date();
+    return new Date(now.getTime() + 6 * 60 * 60 * 1000);
+}
 
 function getTodayStr() {
-    const now   = new Date();
-    const dhaka = new Date(now.getTime() + 6 * 60 * 60 * 1000);
-    return dhaka.getUTCFullYear() + '-' +
-        String(dhaka.getUTCMonth() + 1).padStart(2, '0') + '-' +
-        String(dhaka.getUTCDate()).padStart(2, '0');
+    const d = getDhakaDate();
+    return d.getUTCFullYear() + '-' +
+        String(d.getUTCMonth() + 1).padStart(2, '0') + '-' +
+        String(d.getUTCDate()).padStart(2, '0');
+}
+
+function getDhakaHour() {
+    return getDhakaDate().getUTCHours();
 }
 
 // ── 4. Safe key extractor ─────────────────────────────────────
@@ -82,13 +99,38 @@ function extractKeys(subscription) {
     return null;
 }
 
-// ── 5. Main function ──────────────────────────────────────────
+// ── 5. Build a stable "status key" for a task set ────────────
+// This key represents the *current status* being notified.
+// Same pending task list → same key → suppressed if seen today.
+// We use a sorted join of task titles (truncated).
+
+function buildStatusKey(pendingTasks) {
+    const sorted = [...pendingTasks].sort();
+    const joined = sorted.map(t => t.slice(0, 30)).join('|');
+    // Simple djb2 hash to keep the key short
+    let h = 5381;
+    for (let i = 0; i < joined.length; i++) {
+        h = ((h << 5) + h) ^ joined.charCodeAt(i);
+        h = h >>> 0; // keep unsigned 32-bit
+    }
+    return `tasks_${h}`;
+}
+
+// ── 6. Main function ──────────────────────────────────────────
 
 async function run() {
-    console.log('🚀 Push worker started at', new Date().toISOString());
-    console.log('📅 Today (Dhaka):', getTodayStr());
+    const dhakaHour = getDhakaHour();
+    const today     = getTodayStr();
 
-    const today = getTodayStr();
+    console.log('🚀 Push worker started at', new Date().toISOString());
+    console.log('📅 Today (Dhaka):', today, '| Hour:', dhakaHour);
+
+    // Resting hours: 00:00–05:00 Dhaka (midnight to 5 AM) — no notifications
+    if (dhakaHour < 5) {
+        console.log('🌙 Resting hours (00:00–05:00 Dhaka). Exiting.');
+        process.exit(0);
+    }
+
     let totalSent    = 0;
     let totalFailed  = 0;
     let totalSkipped = 0;
@@ -102,13 +144,27 @@ async function run() {
             return;
         }
 
-        console.log(`👥 Found ${usersSnap.size} user(s). Checking subscriptions...\n`);
+        console.log(`👥 Found ${usersSnap.size} user(s).\n`);
 
         for (const userDoc of usersSnap.docs) {
             const uid = userDoc.id;
             console.log(`── Processing user: ${uid}`);
 
-            // ── Step A: Read ALL device subscriptions for this user ──
+            // ── Step A: Check SNOOZE ──────────────────────────────
+            const snoozeRef  = usersRef.doc(uid).collection('pushState').doc('snooze');
+            const snoozeSnap = await snoozeRef.get();
+
+            if (snoozeSnap.exists) {
+                const snoozeUntil = snoozeSnap.data().until; // epoch ms (number)
+                if (snoozeUntil && Date.now() < snoozeUntil) {
+                    const minsLeft = Math.ceil((snoozeUntil - Date.now()) / 60000);
+                    console.log(`  😴 Snoozed for ${minsLeft} more min — skipping.`);
+                    totalSkipped++;
+                    continue;
+                }
+            }
+
+            // ── Step B: Read device subscriptions ────────────────
             const subsRef  = usersRef.doc(uid).collection('pushSubscriptions');
             const subsSnap = await subsRef.get();
 
@@ -117,22 +173,19 @@ async function run() {
                 totalSkipped++;
                 continue;
             }
+            console.log(`  📱 ${subsSnap.size} device subscription(s).`);
 
-            console.log(`  📱 Found ${subsSnap.size} device subscription(s).`);
-
-            // ── Step B: Read pending tasks ──
+            // ── Step C: Read pending tasks ────────────────────────
             const tasksRef  = usersRef.doc(uid).collection('tasks');
             const tasksSnap = await tasksRef.where('status', '!=', 'done').get();
 
             const pendingTasks = [];
             tasksSnap.forEach(docSnap => {
                 const data = docSnap.data();
-
                 if (!data.date) {
                     pendingTasks.push(data.title || 'Untitled Task');
                     return;
                 }
-
                 let taskDateStr;
                 if (data.date.toDate && typeof data.date.toDate === 'function') {
                     const d = data.date.toDate();
@@ -142,39 +195,54 @@ async function run() {
                 } else {
                     taskDateStr = String(data.date).split('T')[0];
                 }
-
                 if (taskDateStr <= today) {
                     pendingTasks.push(data.title || 'Untitled Task');
                 }
             });
 
             if (pendingTasks.length === 0) {
-                console.log(`  ✅ No pending tasks — no push needed.`);
+                console.log(`  ✅ No pending tasks.`);
                 totalSkipped++;
                 continue;
             }
 
-            console.log(`  📋 Pending tasks (${pendingTasks.length}):`, pendingTasks.slice(0, 3));
+            // ── Step D: Check SEEN-TODAY ──────────────────────────
+            const statusKey    = buildStatusKey(pendingTasks);
+            const seenRef      = usersRef.doc(uid).collection('pushState').doc('seenToday');
+            const seenSnap     = await seenRef.get();
+            const seenData     = seenSnap.exists ? seenSnap.data() : {};
 
-            // ── Step C: Build payload ──
+            // Reset seen list if it's from a previous day
+            const seenDate     = seenData.date || '';
+            const currentSeen  = seenDate === today ? (seenData.keys || []) : [];
+
+            if (currentSeen.includes(statusKey)) {
+                console.log(`  👁️  Status already seen today (key: ${statusKey}) — skipping.`);
+                totalSkipped++;
+                continue;
+            }
+
+            // ── Step E: Build payload ─────────────────────────────
             const count      = pendingTasks.length;
             const firstTitle = pendingTasks[0].slice(0, 50);
 
             const payload = JSON.stringify({
-                title: '⚠️ টাস্ক রিমাইন্ডার',
-                body:  `আপনার ${count} টি কাজ বাকি আছে। যেমন: "${firstTitle}"`,
-                count: count
+                title:     '⚠️ টাস্ক রিমাইন্ডার',
+                body:      `আপনার ${count} টি কাজ বাকি আছে। যেমন: "${firstTitle}"`,
+                count:     count,
+                statusKey: statusKey,   // sent to client so it can mark "seen"
+                uid:       uid,         // sent to client for snooze action
+                tag:       'task-reminder'  // groups/replaces older notifications
             });
 
-            // ── Step D: Send to ALL devices ──
+            // ── Step F: Send to ALL devices ───────────────────────
+            let sentForUser = 0;
             for (const subDoc of subsSnap.docs) {
                 const subscription = subDoc.data();
-
                 if (!subscription.endpoint) {
                     console.warn(`  ⚠️  Device ${subDoc.id}: no endpoint — skipping.`);
                     continue;
                 }
-
                 const keys = extractKeys(subscription);
                 if (!keys) {
                     console.warn(`  ⚠️  Device ${subDoc.id}: missing keys — skipping.`);
@@ -187,21 +255,29 @@ async function run() {
                 };
 
                 try {
-                    await webpush.sendNotification(pushSub, payload, { TTL: 86400 });
+                    await webpush.sendNotification(pushSub, payload, { TTL: 3600 }); // 1hr TTL
                     console.log(`  📨 Sent to device ${subDoc.id.slice(0, 12)}... — OK`);
                     totalSent++;
-
+                    sentForUser++;
                 } catch (pushErr) {
                     console.error(`  ❌ FAILED for device ${subDoc.id.slice(0, 12)}...`);
                     console.error(`     Status: ${pushErr.statusCode} — ${pushErr.body}`);
-
                     if (pushErr.statusCode === 410 || pushErr.statusCode === 404) {
-                        console.warn(`  🗑️  Subscription expired — removing from Firestore.`);
+                        console.warn(`  🗑️  Expired subscription — removing.`);
                         await subDoc.ref.delete();
                     } else {
                         totalFailed++;
                     }
                 }
+            }
+
+            // ── Step G: Mark status as seen for today ─────────────
+            // Only mark seen if at least one push succeeded, so a
+            // total send failure doesn't permanently suppress the day.
+            if (sentForUser > 0) {
+                const updatedKeys = [...new Set([...currentSeen, statusKey])];
+                await seenRef.set({ date: today, keys: updatedKeys });
+                console.log(`  📌 Marked seen for today: ${statusKey}`);
             }
 
             console.log('');
