@@ -1,23 +1,21 @@
 /**
  * ============================================================
- * push-worker/send-push.js  —  v2.0 (WHOLE-DAY + SEEN + SNOOZE)
+ * push-worker/send-push.js  —  v2.1 (UNIQUE-KEY per push)
  *
- * WHAT CHANGED vs v1:
- *   • Runs every 30 min all day (06:00–22:00 Dhaka) instead of
- *     only 4 fixed hours. Update the cron schedule in
- *     push-notify.yml accordingly (see comment there).
+ * WHAT CHANGED vs v2.0:
+ *   • buildStatusKey() now generates a UNIQUE ID per push run
+ *     (format: push_{uid_prefix}_{timestamp_base36}_{random4hex})
+ *     instead of a hash of task titles. This means every push
+ *     notification on the Android shade is independently
+ *     dismissable — snooze, mark_read, and undo each operate on
+ *     that exact notification only, never affecting any other.
  *
- *   • SEEN-TODAY system: once a user has "seen" (acknowledged)
- *     a specific status key today, that push is suppressed for
- *     the rest of the day. Seen keys are stored in Firestore:
- *       users/{uid}/pushState/seenToday
- *     The document resets automatically at midnight (Dhaka).
+ *   • No new dependencies — ID built from Date.now() + Math.random()
+ *     (completely free, no UUID library needed).
  *
- *   • SNOOZE system: a user can snooze from their device.
- *     The snooze timestamp is stored in Firestore:
- *       users/{uid}/pushState/snooze
- *     If snoozeUntil > now  →  skip all pushes for that user.
- *     Snooze duration = 1 hour (set by the client app).
+ *   • app-backend.js v2.1 caps the seenToday keys list at 200
+ *     entries to prevent Firestore document bloat (old entries
+ *     reset daily anyway).
  *
  * Firestore paths (read by this worker):
  *   artifacts/default-app-id/users/{uid}/pushSubscriptions/{hash}
@@ -99,21 +97,18 @@ function extractKeys(subscription) {
     return null;
 }
 
-// ── 5. Build a stable "status key" for a task set ────────────
-// This key represents the *current status* being notified.
-// Same pending task list → same key → suppressed if seen today.
-// We use a sorted join of task titles (truncated).
+// ── 5. Build a unique push ID for this specific run ──────────
+// Each call to send-push.js creates a fresh ID, so every push
+// notification is independently dismissable — no hash collisions
+// between users or across repeated runs with the same task list.
+// Format: push_{uid_prefix}_{timestamp}_{random4hex}
+// This is free — uses only Date.now() and Math.random(), no UUID lib.
 
-function buildStatusKey(pendingTasks) {
-    const sorted = [...pendingTasks].sort();
-    const joined = sorted.map(t => t.slice(0, 30)).join('|');
-    // Simple djb2 hash to keep the key short
-    let h = 5381;
-    for (let i = 0; i < joined.length; i++) {
-        h = ((h << 5) + h) ^ joined.charCodeAt(i);
-        h = h >>> 0; // keep unsigned 32-bit
-    }
-    return `tasks_${h}`;
+function buildStatusKey(uid, _pendingTasks) {
+    const ts   = Date.now().toString(36);                          // base-36 timestamp
+    const rnd  = Math.floor(Math.random() * 0xFFFF).toString(16).padStart(4, '0');
+    const user = uid.slice(0, 6);                                  // first 6 chars of uid
+    return `push_${user}_${ts}_${rnd}`;
 }
 
 // ── 6. Main function ──────────────────────────────────────────
@@ -199,7 +194,8 @@ async function run() {
             }
 
             // ── Step D: Check SEEN-TODAY + per-notification SNOOZE ─
-            const statusKey    = buildStatusKey(pendingTasks);
+            // statusKey is now a unique ID per push run — no hash collisions.
+            const statusKey    = buildStatusKey(uid, pendingTasks);
             const seenRef      = usersRef.doc(uid).collection('pushState').doc('seenToday');
             const seenSnap     = await seenRef.get();
             const seenData     = seenSnap.exists ? seenSnap.data() : {};
@@ -234,9 +230,12 @@ async function run() {
                 title:     '⚠️ টাস্ক রিমাইন্ডার',
                 body:      `আপনার ${count} টি কাজ বাকি আছে। যেমন: "${firstTitle}"`,
                 count:     count,
-                statusKey: statusKey,   // sent to client so it can mark "seen"
-                uid:       uid,         // sent to client for snooze action
-                tag:       'task-reminder'  // groups/replaces older notifications
+                statusKey: statusKey,    // sent to SW so it can mark "seen"
+                uid:       uid,          // sent to SW for snooze/mark_read actions
+                tag:       'task-reminder',
+                // Needed by SW for direct Firestore REST calls when tab is closed:
+                projectId: process.env.FIREBASE_PROJECT_ID,
+                apiKey:    process.env.FIREBASE_API_KEY || ''
             });
 
             // ── Step F: Send to ALL devices ───────────────────────
@@ -275,13 +274,12 @@ async function run() {
                 }
             }
 
-            // ── Step G: Mark status as seen for today ─────────────
-            // Only mark seen if at least one push succeeded, so a
-            // total send failure doesn't permanently suppress the day.
+            // ── Step G: intentionally NOT marking seen here ───────
+            // Seen is only written when the user TAPS the notification
+            // (sw.js → PUSH_NOTIF_ACTION → AppDB.markPushSeen).
+            // This allows retries every 30 min until the user acts.
             if (sentForUser > 0) {
-                const updatedKeys = [...new Set([...currentSeen, statusKey])];
-                await seenRef.set({ date: today, keys: updatedKeys });
-                console.log(`  📌 Marked seen for today: ${statusKey}`);
+                console.log(`  📨 Sent ${sentForUser} push(es) — will retry next run until user taps.`);
             }
 
             console.log('');
