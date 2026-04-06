@@ -57,7 +57,7 @@ function _injectStyles(accent) {
 .enotif-card {
     background: var(--card-bg, #fff);
     border: 1.5px solid var(--border, #e5e7eb);
-    border-radius: 12px;
+
     padding: 20px 22px;
     max-width: 420px;
     font-family: inherit;
@@ -130,7 +130,7 @@ function _injectStyles(accent) {
     transition: transform .2s;
     box-shadow: 0 1px 3px rgba(0,0,0,.2);
 }
-.enotif-switch input:checked + .enotif-slider { background: ${accent}; }
+.enotif-switch input:checked + .enotif-slider { background: #251577; }
 .enotif-switch input:checked + .enotif-slider::before { transform: translateX(18px); }
 .enotif-divider {
     border: none;
@@ -149,17 +149,17 @@ function _injectStyles(accent) {
 }
 .enotif-btn:active { transform: scale(.97); }
 .enotif-btn-primary {
-    background: ${accent};
+    background: #251577;
     color: #fff;
 }
-.enotif-btn-primary:hover { opacity: .88; }
+.enotif-btn-primary:hover { background: #251577; }
 .enotif-btn-ghost {
-    background: transparent;
-    color: #ef4444;
-    border: 1.5px solid #ef4444;
+    background: #dc3545;
+    color: #ffff;
+    border: 1.5px solid #dc3545;
     margin-left: 8px;
 }
-.enotif-btn-ghost:hover { background: #fef2f2; }
+.enotif-btn-ghost:hover { #dc3545; }
 .enotif-msg {
     margin-top: 12px;
     padding: 8px 12px;
@@ -168,7 +168,7 @@ function _injectStyles(accent) {
     display: none;
 }
 .enotif-msg.ok  { background: #f0fdf4; color: #166534; display: block; }
-.enotif-msg.err { background: #fef2f2; color: #991b1b; display: block; }
+.enotif-msg.err { background: #fff5f5; color: #dc3545; display: block; }
 .enotif-loading { color: var(--text-muted, #9ca3af); font-size: .85rem; padding: 6px 0; }
     `;
     document.head.appendChild(s);
@@ -228,7 +228,7 @@ function _render(container, { title, accent, sub, isSubscribed, email, prefs }) 
 
     <div style="margin-top:14px">
         <button class="enotif-btn enotif-btn-primary" id="enotif-save">
-            ${isSubscribed ? '⚙️ আপডেট করুন' : '✅ সাবস্ক্রাইব করুন'}
+            ${isSubscribed ? 'আপডেট করুন' : 'সাবস্ক্রাইব করুন'}
         </button>
         ${isSubscribed ? `<button class="enotif-btn enotif-btn-ghost" id="enotif-unsub">আনসাবস্ক্রাইব</button>` : ''}
     </div>
@@ -322,13 +322,13 @@ async function _mount(el, uid) {
 
     // Derive config from data attributes
     const title  = mountPoint.dataset.title  || 'ইমেইল নোটিফিকেশন';
-    const accent  = mountPoint.dataset.accent || '#4f46e5';
-    const sub     = mountPoint.dataset.subtitle || 'প্রতিদিন সকাল ৮টা ও সন্ধ্যা ৮টায় ডাইজেস্ট ইমেইল পান।';
+    const accent  = mountPoint.dataset.accent || '#251577';
+    const sub     = mountPoint.dataset.subtitle || '';
 
     _injectStyles(accent);
 
     // Show loading state
-    mountPoint.innerHTML = `<div class="enotif-loading">⏳ লোড হচ্ছে...</div>`;
+    mountPoint.innerHTML = `<div class="enotif-loading">লোড হচ্ছে...</div>`;
 
     const existing     = await window.EmailDB.getEmailSubscription(uid);
     const isSubscribed = !!(existing && existing.active);
