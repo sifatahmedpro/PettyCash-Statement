@@ -57,12 +57,19 @@ function _injectStyles(accent) {
 .enotif-card {
     background: var(--card-bg, #fff);
     border: 1.5px solid var(--border, #e5e7eb);
-
     padding: 20px 22px;
-    max-width: 420px;
+    width: 100%;
+    max-width: 360px;
     font-family: inherit;
     box-shadow: 0 2px 8px rgba(0,0,0,.06);
     margin: 16px 0;
+    box-sizing: border-box;
+    display: block;
+}
+
+#email-notif-widget {
+    display: block;
+    width: 100%;
 }
 .enotif-card h3 {
     margin: 0 0 4px;
@@ -283,8 +290,8 @@ function _wireEvents(container, uid, currentEmail) {
             try {
                 await window.EmailDB.saveEmailSubscription(uid, email, prefs);
                 _showMsg('✅ সাবস্ক্রিপশন সেভ হয়েছে! আপনি এখন ইমেইল পাবেন।', 'ok');
-                // Re-render with fresh state
-                await _mount(container.closest('[id]') || container, uid);
+                // Re-render with fresh state — always target the known widget id
+                await _mount(document.getElementById('email-notif-widget') || container, uid);
             } catch (err) {
                 console.error('EmailUI save error:', err);
                 _showMsg('❌ সেভ করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।', 'err');
@@ -301,7 +308,7 @@ function _wireEvents(container, uid, currentEmail) {
             try {
                 await window.EmailDB.removeEmailSubscription(uid);
                 _showMsg('🔕 সাবস্ক্রিপশন বাতিল হয়েছে।', 'ok');
-                await _mount(container.closest('[id]') || container, uid);
+                await _mount(document.getElementById('email-notif-widget') || container, uid);
             } catch (err) {
                 console.error('EmailUI unsub error:', err);
                 _showMsg('❌ বাতিল করতে সমস্যা হয়েছে।', 'err');
@@ -348,14 +355,11 @@ async function _mount(el, uid) {
         await _waitFor(() => window.EmailDB && typeof window.EmailDB.saveEmailSubscription === 'function', 'EmailDB');
 
         window.AppDB.onAuthStateChanged(async (user) => {
-            const mountPoint =
-                document.getElementById('email-notif-widget') ||
-                (() => {
-                    const d = document.createElement('div');
-                    d.id = 'email-notif-widget';
-                    document.body.appendChild(d);
-                    return d;
-                })();
+            // Only mount if the placeholder already exists in the page layout.
+            // Never append to <body> — that places the widget outside .main-wrapper
+            // and it ends up hidden under the sidebar.
+            const mountPoint = document.getElementById('email-notif-widget');
+            if (!mountPoint) return;
 
             if (!user) {
                 mountPoint.innerHTML = '';
