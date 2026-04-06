@@ -151,18 +151,10 @@ async function run() {
             console.log(`── Processing user: ${uid}`);
 
             // ── Step A: Check SNOOZE ──────────────────────────────
-            const snoozeRef  = usersRef.doc(uid).collection('pushState').doc('snooze');
-            const snoozeSnap = await snoozeRef.get();
-
-            if (snoozeSnap.exists) {
-                const snoozeUntil = snoozeSnap.data().until; // epoch ms (number)
-                if (snoozeUntil && Date.now() < snoozeUntil) {
-                    const minsLeft = Math.ceil((snoozeUntil - Date.now()) / 60000);
-                    console.log(`  😴 Snoozed for ${minsLeft} more min — skipping.`);
-                    totalSkipped++;
-                    continue;
-                }
-            }
+            // Per-notification snooze is stored inside pushState/seenToday
+            // as a 'snoozed' map: { [statusKey]: snoozeUntilEpochMs }.
+            // We read this once here and use it in Step D below.
+            // (System-wide snooze is removed — only per-notification snooze exists.)
 
             // ── Step B: Read device subscriptions ────────────────
             const subsRef  = usersRef.doc(uid).collection('pushSubscriptions');
@@ -206,7 +198,7 @@ async function run() {
                 continue;
             }
 
-            // ── Step D: Check SEEN-TODAY ──────────────────────────
+            // ── Step D: Check SEEN-TODAY + per-notification SNOOZE ─
             const statusKey    = buildStatusKey(pendingTasks);
             const seenRef      = usersRef.doc(uid).collection('pushState').doc('seenToday');
             const seenSnap     = await seenRef.get();
@@ -216,8 +208,20 @@ async function run() {
             const seenDate     = seenData.date || '';
             const currentSeen  = seenDate === today ? (seenData.keys || []) : [];
 
+            // Per-notification snooze map: { [statusKey]: snoozeUntilEpochMs }
+            // Snooze entries from previous days are ignored (they expire naturally).
+            const snoozedMap   = seenDate === today ? (seenData.snoozed || {}) : {};
+            const snoozeUntil  = snoozedMap[statusKey] || 0;
+
             if (currentSeen.includes(statusKey)) {
-                console.log(`  👁️  Status already seen today (key: ${statusKey}) — skipping.`);
+                console.log(`  👁️  Already seen today (key: ${statusKey}) — skipping.`);
+                totalSkipped++;
+                continue;
+            }
+
+            if (Date.now() < snoozeUntil) {
+                const minsLeft = Math.ceil((snoozeUntil - Date.now()) / 60000);
+                console.log(`  😴 This notification snoozed for ${minsLeft} more min (key: ${statusKey}) — skipping.`);
                 totalSkipped++;
                 continue;
             }
