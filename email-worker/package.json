@@ -1,0 +1,15 @@
+{
+  "name": "email-worker",
+  "version": "1.0.0",
+  "description": "Email digest worker for GitHub Actions — sends via EmailJS, reads from Firestore.",
+  "main": "send-email.js",
+  "scripts": {
+    "start": "node send-email.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
