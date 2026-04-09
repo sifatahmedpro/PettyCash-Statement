@@ -1,15 +1,14 @@
 ## ============================================================
-## .github/workflows/push-notify.yml  —  v2.0
+## .github/workflows/push-notify.yml  —  v3.1
 ##
-## Runs every 30 minutes between 06:00–22:00 Dhaka time
-## (= 00:00–16:00 UTC). The Node.js script itself also has an
-## hour-range guard so accidental triggers outside hours are safe.
+## Runs every 60 minutes between 06:00–22:00 Dhaka time
+## (= 00:00–16:00 UTC). Resting hours are 23:00–06:00 Dhaka.
+## The Node.js script itself also has an hour-range guard so
+## accidental triggers outside hours are safe.
 ##
-## NEW in v2:
-##   - Runs all day (every 30 min) instead of 4 fixed hours
-##   - Seen-today system: same status won't be pushed twice a day
-##   - Snooze system: user can snooze reminders for 1 hour
-##     from inside the app; the worker checks Firestore for it.
+## CHANGED in v3.1:
+##   - Interval changed from 30 min to 60 min
+##   - ~495 runs/month → well within 2,000 min free tier
 ##
 ## HOW TO SET UP:
 ##   1. Go to your GitHub repo → Settings → Secrets and variables → Actions
@@ -26,11 +25,10 @@ name: Web Push Notifications
 
 on:
   schedule:
-    # Every 30 minutes from 00:00 UTC to 16:00 UTC
-    # = 05:00–23:59 Dhaka (UTC+6). Resting hours 00:00–05:00 Dhaka are
+    # Every 60 minutes from 00:00 UTC to 16:00 UTC
+    # = 06:00–22:00 Dhaka (UTC+6). Resting hours 23:00–06:00 Dhaka are
     # also blocked inside send-push.js as a second safety layer.
-    - cron: '0,30 23 * * *'    # 23:00–23:30 UTC = 05:00–05:30 Dhaka
-    - cron: '0,30 0-17 * * *'  # 00:00–17:30 UTC = 06:00–23:30 Dhaka
+    - cron: '0 0-16 * * *'  # 00:00–16:00 UTC = 06:00–22:00 Dhaka
 
   # Run manually from the Actions tab for testing
   workflow_dispatch:
