@@ -1,6 +1,6 @@
 /**
  * ============================================================
- * push-worker/send-push.js  —  v2.3 (FIX: all-module notifs)
+ * push-worker/send-push.js  —  v3.0 (resting 23:00–06:00 + per-module pushes)
  *
  * ROOT CAUSE FIX (v2.2 → v2.3):
  *   The previous query for module notifications used:
@@ -169,9 +169,9 @@ async function run() {
     console.log('🚀 Push worker started at', new Date().toISOString());
     console.log('📅 Today (Dhaka):', today, '| Hour:', dhakaHour);
 
-    // Resting hours: 00:00–05:00 Dhaka — no notifications
-    if (dhakaHour < 5) {
-        console.log('🌙 Resting hours (00:00–05:00 Dhaka). Exiting.');
+    // Resting hours: 23:00–06:00 Dhaka — no notifications
+    if (dhakaHour < 6 || dhakaHour >= 23) {
+        console.log('🌙 Resting hours (23:00–06:00 Dhaka). Exiting.');
         process.exit(0);
     }
 
@@ -281,65 +281,78 @@ async function run() {
             }
 
             // ════════════════════════════════════════════════════
-            // PART 2 — ALL-MODULE NOTIFICATIONS  (FIXED in v2.3)
+            // PART 2 — PER-MODULE NOTIFICATIONS  (v3.0)
             //
-            // BUG IN v2.2: The query used .where('pushed', '!=', true)
-            // + .orderBy('pushed') + .orderBy('timestamp', 'asc').
-            // This requires a Firestore composite index that was
-            // never created, so Firestore silently returned 0 docs
-            // every single run — module notifications never fired.
+            // Each module tag (task-manager, office-issue, petty-cash,
+            // advance-payment, manpower, etc.) gets its OWN separate
+            // push notification so the user knows exactly which module
+            // triggered the alert.
             //
-            // FIX: Fetch the latest 50 notifications with a simple
-            // single-field orderBy (no composite index needed), then
-            // filter in-memory for docs where pushed !== true.
-            // This correctly handles:
-            //   • pushed = false   (set by notify.js)
-            //   • pushed missing   (old docs from before this feature)
-            //   • pushed = null
-            // Process oldest-first so pushes arrive in order.
+            // Strategy:
+            //   1. Fetch latest 50 notifications, filter unpushed in-memory.
+            //   2. Group by tag.
+            //   3. Send ONE push per group — title = module name, body
+            //      lists up to 3 items then "+ N more".
+            //   4. Mark all docs in the group as pushed:true.
             // ════════════════════════════════════════════════════
 
-            console.log(`  [NOTIFS] Checking unread/unsent notifications...`);
+            console.log(`  [NOTIFS] Checking unread/unsent notifications (per-module)...`);
 
             const notifRef = usersRef.doc(uid).collection('notifications');
 
-            // Simple query — only orderBy timestamp, no composite index needed.
-            // Fetch recent 50; filter unpushed in-memory; process oldest first.
             const notifSnap = await notifRef
                 .orderBy('timestamp', 'desc')
                 .limit(50)
                 .get();
 
-            // Filter: only docs where pushed field is not exactly true
+            // Filter unpushed; keep oldest-first within each group
             const unsentDocs = notifSnap.docs
                 .filter(d => d.data().pushed !== true)
-                .reverse(); // oldest first → notifications arrive in chronological order
+                .reverse();
 
             if (unsentDocs.length === 0) {
                 console.log(`  [NOTIFS] ✅ No unsent notifications.`);
             } else {
-                console.log(`  [NOTIFS] 📋 ${unsentDocs.length} unsent notification(s) to push.`);
+                console.log(`  [NOTIFS] 📋 ${unsentDocs.length} unsent notification(s). Grouping by module...`);
 
-                // Re-fetch subscriptions (may have changed after task-reminder cleanup above)
+                // Group by tag
+                const groups = {};
+                for (const notifDoc of unsentDocs) {
+                    const data = notifDoc.data();
+                    const tag  = data.tag || 'general';
+                    if (!groups[tag]) groups[tag] = [];
+                    groups[tag].push(notifDoc);
+                }
+
                 const freshSubsSnap = await subsRef.get();
                 if (freshSubsSnap.empty) {
                     console.log(`  [NOTIFS] ⏭️  No device subscriptions left — skipping notifications.`);
                 } else {
-                    for (const notifDoc of unsentDocs) {
-                        const data  = notifDoc.data();
-                        const title = data.title   || '🔔 নতুন নোটিফিকেশন';
-                        const body  = data.message || '';
-                        const tag   = data.tag     || 'general';
+                    for (const [tag, docs] of Object.entries(groups)) {
+                        const count    = docs.length;
+                        const latest   = docs[docs.length - 1].data(); // most recent in group
+                        const title    = latest.title || '🔔 নতুন নোটিফিকেশন';
 
-                        console.log(`  [NOTIFS] → Pushing: [${tag}] ${title}`);
+                        // Build body: list up to 3 messages, then "+ N more"
+                        const preview = docs.slice(-3).map(d => d.data().message || '').filter(Boolean);
+                        let body;
+                        if (count === 1) {
+                            body = preview[0] || '';
+                        } else {
+                            const shown = preview.slice(0, 3);
+                            const extra = count - shown.length;
+                            body = shown.join(' • ');
+                            if (extra > 0) body += ` (+${extra} আরও)`;
+                        }
+
+                        console.log(`  [NOTIFS] → Module [${tag}]: ${count} notification(s)`);
 
                         const payload = JSON.stringify({
                             title,
                             body,
                             tag:       `notif-${tag}`,
-                            notifId:   notifDoc.id,
+                            notifId:   docs[docs.length - 1].id,
                             uid,
-                            // No statusKey/snooze — module notifs are one-shot.
                             projectId: process.env.FIREBASE_PROJECT_ID,
                             apiKey:    process.env.FIREBASE_API_KEY || ''
                         });
@@ -350,17 +363,20 @@ async function run() {
                         totalSent   += sent;
                         totalFailed += failed;
 
-                        // Mark pushed regardless of send count so a zero-device
-                        // user doesn't get a backlog of stale notifications later.
-                        await notifDoc.ref.update({
-                            pushed:     true,
-                            pushSentAt: admin.firestore.FieldValue.serverTimestamp()
-                        });
+                        // Mark all docs in this group as pushed
+                        const batch = admin.firestore().batch();
+                        for (const notifDoc of docs) {
+                            batch.update(notifDoc.ref, {
+                                pushed:     true,
+                                pushSentAt: admin.firestore.FieldValue.serverTimestamp()
+                            });
+                        }
+                        await batch.commit();
 
                         if (sent > 0) {
-                            console.log(`  [NOTIFS] ✔ Pushed & marked: ${notifDoc.id.slice(0, 12)}...`);
+                            console.log(`  [NOTIFS] ✔ [${tag}] Pushed & marked ${count} doc(s).`);
                         } else {
-                            console.log(`  [NOTIFS] ⚠️  0 devices received push — marked anyway to prevent requeue.`);
+                            console.log(`  [NOTIFS] ⚠️  [${tag}] 0 devices received push — marked anyway.`);
                         }
                     }
                 }
