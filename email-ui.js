@@ -73,7 +73,6 @@ function _injectStyles() {
 .en3-card {
     background: #fff;
     border: 1.5px solid #dde0f8;
-    border-radius: 14px;
     overflow: hidden;
     max-width: 480px;
     width: 100%;
@@ -84,7 +83,7 @@ function _injectStyles() {
 
 /* Header */
 .en3-header {
-    background: linear-gradient(135deg, #251577 0%, #1d4ed8 100%);
+    background: #251577;
     padding: 0;
     position: relative;
     overflow: hidden;
@@ -94,7 +93,7 @@ function _injectStyles() {
     position: absolute;
     top: -30px; right: -30px;
     width: 120px; height: 120px;
-    background: rgba(255,255,255,.07);
+    background: #251577;
     border-radius: 50%;
 }
 .en3-header::after {
@@ -102,17 +101,19 @@ function _injectStyles() {
     position: absolute;
     bottom: -20px; left: 20px;
     width: 80px; height: 80px;
-    background: rgba(255,193,0,.1);
+    background: #251577;
     border-radius: 50%;
 }
 .en3-header-gold-bar {
     height: 3px;
-    background: linear-gradient(90deg, #FFC400, #FFE066, #FFC400);
+    background: #ffff;
 }
+    
 .en3-header-inner {
     padding: 18px 22px 14px;
     position: relative; z-index: 1;
 }
+
 .en3-header-top {
     display: flex;
     align-items: center;
@@ -126,7 +127,7 @@ function _injectStyles() {
 }
 .en3-icon-circle {
     width: 40px; height: 40px;
-    background: rgba(255,255,255,.2);
+    background: #fff;
     border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
     font-size: 1.2rem;
@@ -141,7 +142,7 @@ function _injectStyles() {
 }
 .en3-header p {
     margin: 0;
-    color: rgba(255,255,255,.72);
+    color: #fff;
     font-size: .78rem;
     font-family: 'SolaimanLipi','Kalpurush','Noto Sans Bengali',sans-serif !important;
 }
@@ -156,7 +157,7 @@ function _injectStyles() {
     font-family: 'SolaimanLipi','Kalpurush','Noto Sans Bengali',sans-serif !important;
 }
 .en3-status-badge.active {
-    background: #22c55e;
+    background: #28a745;
     color: #fff;
 }
 .en3-status-badge.inactive {
@@ -178,15 +179,15 @@ function _injectStyles() {
     padding: 3px 10px;
     border-radius: 20px;
     font-size: .73rem;
-    background: rgba(255,255,255,.15);
-    color: rgba(255,255,255,.9);
-    border: 1px solid rgba(255,255,255,.25);
+    background: #ffff;
+    color: #251577; 
+    border: 1px solid #251577; 
     font-family: 'SolaimanLipi','Kalpurush',sans-serif !important;
 }
 .en3-slot-pill.enabled {
-    background: rgba(255,193,0,.25);
-    border-color: rgba(255,193,0,.5);
-    color: #FFE066;
+    background: #ffff;
+    border-color: #251577; 
+    color: #251577; 
 }
 
 /* Body */
@@ -303,6 +304,7 @@ function _injectStyles() {
     color: #251577;
     box-sizing: border-box;
     font-family: 'SolaimanLipi','Kalpurush',sans-serif !important;
+    font-weight: 700 !important;
     transition: border-color .2s, box-shadow .2s;
     outline: none;
 }
@@ -343,22 +345,21 @@ function _injectStyles() {
 .en3-btn:disabled { opacity: .6; cursor: not-allowed; }
 
 .en3-btn-primary {
-    background: linear-gradient(135deg, #251577, #1d4ed8);
+    background:  #251577;
     color: #fff;
-    box-shadow: 0 3px 10px rgba(37,21,119,.25);
     flex: 1;
     justify-content: center;
 }
 .en3-btn-primary:hover:not(:disabled) {
-    box-shadow: 0 5px 16px rgba(37,21,119,.35);
+  
 }
 .en3-btn-danger {
-    background: #fff;
-    color: #dc2626;
-    border: 1.5px solid #fca5a5;
+    background: #dc3545;
+    color: #ffff;
+    border: 1.5px solid #dc3545;
 }
 .en3-btn-danger:hover:not(:disabled) {
-    background: #fee2e2;
+    background: #dc3545;
 }
 
 /* Toast / message */
@@ -467,7 +468,7 @@ function _render(container, { title, sub, isSubscribed, email, prefs }) {
         <!-- Digest time slots -->
         <div class="en3-section-head">
             <div class="en3-section-head-line"></div>
-            <span>📅 ডাইজেস্ট সময়</span>
+            <span>ডাইজেস্ট সময়</span>
         </div>
 
         <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -480,7 +481,7 @@ function _render(container, { title, sub, isSubscribed, email, prefs }) {
         <!-- Per-page toggles -->
         <div class="en3-section-head">
             <div class="en3-section-head-line"></div>
-            <span>📌 পেজ ভিত্তিক ইমেইল</span>
+            <span>পেজ ভিত্তিক ইমেইল</span>
         </div>
 
         <div class="en3-pages-grid">
@@ -497,7 +498,7 @@ function _render(container, { title, sub, isSubscribed, email, prefs }) {
 
         <!-- Email input -->
         <div class="en3-input-wrap">
-            <label for="en3-email">✉️ ইমেইল ঠিকানা</label>
+            <label for="en3-email">ইমেইল ঠিকানা</label>
             <span class="en3-email-icon">📬</span>
             <input
                 class="en3-email-input"
@@ -512,10 +513,10 @@ function _render(container, { title, sub, isSubscribed, email, prefs }) {
         <!-- Action buttons -->
         <div class="en3-btn-row">
             <button class="en3-btn en3-btn-primary" id="en3-save">
-                ${isSubscribed ? '✅ আপডেট করুন' : '📨 সাবস্ক্রাইব করুন'}
+                ${isSubscribed ? 'আপডেট করুন' : 'সাবস্ক্রাইব করুন'}
             </button>
             ${isSubscribed
-                ? `<button class="en3-btn en3-btn-danger" id="en3-unsub">🔕 আনসাবস্ক্রাইব</button>`
+                ? `<button class="en3-btn en3-btn-danger" id="en3-unsub">আনসাবস্ক্রাইব</button>`
                 : ''}
         </div>
 
@@ -577,17 +578,17 @@ function _wireEvents(container, uid, currentEmail) {
             };
 
             saveBtn.disabled    = true;
-            saveBtn.textContent = '⏳ সেভ হচ্ছে...';
+            saveBtn.textContent = 'সেভ হচ্ছে...';
 
             try {
                 await window.EmailDB.saveEmailSubscription(uid, email, prefs);
-                _showToast('✅ সাবস্ক্রিপশন সেভ হয়েছে! আপনি ইমেইল পাবেন।', 'ok');
+                _showToast('সাবস্ক্রিপশন সেভ হয়েছে! আপনি ইমেইল পাবেন।', 'ok');
                 await _mount(document.getElementById('email-notif-widget') || container, uid);
             } catch (err) {
                 console.error('EmailUI save error:', err);
                 _showToast('❌ সেভ করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।', 'err');
                 saveBtn.disabled    = false;
-                saveBtn.textContent = '📨 সাবস্ক্রাইব করুন';
+                saveBtn.textContent = 'সাবস্ক্রাইব করুন';
             }
         });
     }
@@ -596,16 +597,16 @@ function _wireEvents(container, uid, currentEmail) {
         unsubBtn.addEventListener('click', async () => {
             if (!confirm('ইমেইল নোটিফিকেশন বন্ধ করতে চান?')) return;
             unsubBtn.disabled    = true;
-            unsubBtn.textContent = '⏳...';
+            unsubBtn.textContent = '...';
             try {
                 await window.EmailDB.removeEmailSubscription(uid);
-                _showToast('🔕 সাবস্ক্রিপশন বাতিল হয়েছে।', 'ok');
+                _showToast('সাবস্ক্রিপশন বাতিল হয়েছে।', 'ok');
                 await _mount(document.getElementById('email-notif-widget') || container, uid);
             } catch (err) {
                 console.error('EmailUI unsub error:', err);
                 _showToast('❌ বাতিল করতে সমস্যা হয়েছে।', 'err');
                 unsubBtn.disabled    = false;
-                unsubBtn.textContent = '🔕 আনসাবস্ক্রাইব';
+                unsubBtn.textContent = 'আনসাবস্ক্রাইব';
             }
         });
     }
