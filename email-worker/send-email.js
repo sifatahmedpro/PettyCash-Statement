@@ -1,6 +1,6 @@
 /**
  * ============================================================
- * email-worker/send-email.js  —  v3.0 (PROFESSIONAL EMAIL DESIGN)
+ * email-worker/send-email.js  —  v4.0 (FULL LIST STATUS EMAILS)
  *
  * WHAT CHANGED vs v2:
  *   Complete visual redesign of all 6 email templates:
@@ -87,100 +87,159 @@ function getDigestSlot() {
     return getDhakaDate().getUTCHours() < 14 ? 'morning' : 'evening';
 }
 
-// ── 4. Firestore data fetchers (unchanged from v2) ────────────
+// ── 4. Firestore data fetchers (v4 — full list, active + archived) ──
 
 const BASE = (uid) =>
     db.collection('artifacts').doc('default-app-id').collection('users').doc(uid);
 
-async function fetchAdvancePayments(uid, today) {
+// Returns { active: [], archived: [], totalActive, totalArchived, grandTotal }
+async function fetchAdvancePayments(uid) {
     const snap = await BASE(uid).collection('payments')
-        .where('date', '>=', today).orderBy('date', 'desc').get();
-    const rows = [];
+        .orderBy('date', 'desc').get();
+    const active = [], archived = [];
     snap.forEach(d => {
         const data = d.data();
-        rows.push({ name: data.name || '—', type: data.type || '—',
-                    amount: data.amount != null ? data.amount : '—', date: data.date || '—' });
+        const row = {
+            code:        data.code        || '—',
+            name:        data.name        || '—',
+            branch:      data.branch      || '—',
+            type:        data.type        || '—',
+            description: data.description || '—',
+            amount:      data.amount != null ? data.amount : 0,
+            date:        data.date        || '—'
+        };
+        if (data.isArchived) archived.push(row);
+        else                 active.push(row);
     });
-    return rows;
+    const totalActive   = active.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+    const totalArchived = archived.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+    return { active, archived, totalActive, totalArchived,
+             grandTotal: totalActive + totalArchived };
 }
 
+// Returns { rows: [], total }
 async function fetchBusinessStats(uid) {
-    const snap = await BASE(uid).collection('businessStats').get();
     const rows = [];
+    const snap = await BASE(uid).collection('businessStats').get();
     snap.forEach(d => {
         if (d.id === 'archive') return;
         const data = d.data();
-        rows.push({ date: data.reportDate || data.date || '—', incharge: data.inchargeName || '—',
-                    business: data.businessYear || '—', amount: data.businessAmount != null ? data.businessAmount : '—' });
+        rows.push({ date: data.reportDate || data.date || '—',
+                    incharge: data.inchargeName || '—',
+                    business: data.businessYear || '—',
+                    amount: data.businessAmount != null ? data.businessAmount : 0 });
     });
     try {
         const archSnap = await BASE(uid).collection('businessStats')
-            .doc('archive').collection('reports').orderBy('reportDate', 'desc').limit(5).get();
+            .doc('archive').collection('reports').orderBy('reportDate', 'desc').get();
         archSnap.forEach(d => {
             const data = d.data();
-            rows.push({ date: data.reportDate || '—', incharge: data.inchargeName || '—',
-                        business: data.businessYear || '—', amount: data.businessAmount != null ? data.businessAmount : '—' });
+            rows.push({ date: data.reportDate || '—',
+                        incharge: data.inchargeName || '—',
+                        business: data.businessYear || '—',
+                        amount: data.businessAmount != null ? data.businessAmount : 0 });
         });
     } catch (_) {}
-    return rows;
+    rows.sort((a, b) => (b.date > a.date ? 1 : -1));
+    const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+    return { rows, total };
 }
 
-async function fetchDonations(uid, today) {
+// Returns { active: [], archived: [], totalActive, totalArchived }
+async function fetchDonations(uid) {
     const snap = await BASE(uid).collection('donations')
-        .where('date', '>=', today).orderBy('date', 'desc').get();
-    const rows = [];
+        .orderBy('date', 'desc').get();
+    const active = [], archived = [];
     snap.forEach(d => {
         const data = d.data();
-        rows.push({ name: data.name || '—', type: data.type || '—',
-                    amount: data.amount != null ? data.amount : '—', date: data.date || '—' });
+        const row = {
+            code:   data.code   || '—',
+            name:   data.name   || '—',
+            branch: data.branch || '—',
+            type:   data.type   || '—',
+            amount: data.amount != null ? data.amount : 0,
+            date:   data.date   || '—'
+        };
+        if (data.isArchived) archived.push(row);
+        else                 active.push(row);
     });
-    return rows;
+    const totalActive   = active.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+    const totalArchived = archived.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+    return { active, archived, totalActive, totalArchived };
 }
 
-async function fetchPendingTasks(uid, today) {
-    const snap = await BASE(uid).collection('tasks').where('status', '!=', 'done').get();
-    const rows = [];
+// Returns { pending: [], done: [] } — all tasks
+async function fetchAllTasks(uid) {
+    const snap = await BASE(uid).collection('tasks')
+        .orderBy('date', 'asc').get();
+    const pending = [], done = [];
     snap.forEach(d => {
         const data = d.data();
-        if (!data.date) { rows.push({ title: data.title || 'শিরোনামহীন', date: '(তারিখ নেই)' }); return; }
-        let dateStr;
-        if (data.date.toDate) {
-            const dt = data.date.toDate();
-            dateStr = dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
-        } else { dateStr = String(data.date).split('T')[0]; }
-        if (dateStr <= today) rows.push({ title: data.title || 'শিরোনামহীন', date: dateStr });
+        let dateStr = '(তারিখ নেই)';
+        if (data.date) {
+            if (data.date.toDate) {
+                const dt = data.date.toDate();
+                dateStr = dt.getFullYear() + '-' +
+                    String(dt.getMonth() + 1).padStart(2, '0') + '-' +
+                    String(dt.getDate()).padStart(2, '0');
+            } else {
+                dateStr = String(data.date).split('T')[0];
+            }
+        }
+        const row = { title: data.title || 'শিরোনামহীন', date: dateStr,
+                      status: data.status || 'pending' };
+        if (data.status === 'done') done.push(row);
+        else                        pending.push(row);
     });
-    return rows;
+    return { pending, done };
 }
 
+// Returns { pending: [], resolved: [] }
 async function fetchIssues(uid) {
-    const snap = await BASE(uid).collection('issues').where('status', '==', 'pending').get();
-    const rows = [];
+    const snap = await BASE(uid).collection('issues')
+        .orderBy('date', 'desc').get();
+    const pending = [], resolved = [];
     snap.forEach(d => {
         const data = d.data();
-        rows.push({ date: data.date || '—', description: (data.description || '—').slice(0, 60), priority: data.priority || '—' });
+        const row = {
+            date:        data.date        || '—',
+            description: (data.description || '—').slice(0, 80),
+            priority:    data.priority    || '—',
+            status:      data.status      || 'pending'
+        };
+        if (data.status === 'pending') pending.push(row);
+        else                           resolved.push(row);
     });
-    return rows;
+    return { pending, resolved };
 }
 
-async function fetchPremiumStatements(uid, today) {
+// Returns { rows: [], totalDeposit, totalBalance }
+async function fetchPremiumStatements(uid) {
     const types = ['1st_year', 'renewal', 'deferred', 'mr', 'loan'];
-    const typeLabels = { '1st_year': '১ম বর্ষ', renewal: 'নবায়ন', deferred: 'ডেফার্ড', mr: 'এম আর', loan: 'ঋণ' };
+    const typeLabels = { '1st_year': '১ম বর্ষ', renewal: 'নবায়ন',
+                         deferred: 'ডেফার্ড', mr: 'এম আর', loan: 'ঋণ' };
     const rows = [];
     for (const type of types) {
         try {
             const snap = await BASE(uid).collection('premiumStatements')
-                .where('type', '==', type).where('date', '>=', today).get();
+                .where('type', '==', type).orderBy('date', 'desc').get();
             snap.forEach(d => {
                 const data = d.data();
-                rows.push({ type: typeLabels[type] || type, slipNo: data.slipNo || '—',
-                            amount: data.amount != null ? data.amount : '—',
-                            deposit: data.deposit != null ? data.deposit : '—',
-                            balance: data.balance != null ? data.balance : '—', date: data.date || '—' });
+                rows.push({
+                    type:    typeLabels[type] || type,
+                    slipNo:  data.slipNo  || '—',
+                    amount:  data.amount  != null ? data.amount  : 0,
+                    deposit: data.deposit != null ? data.deposit : 0,
+                    balance: data.balance != null ? data.balance : 0,
+                    date:    data.date    || '—'
+                });
             });
         } catch (_) {}
     }
-    return rows;
+    rows.sort((a, b) => (b.date > a.date ? 1 : -1));
+    const totalDeposit = rows.reduce((s, r) => s + (Number(r.deposit) || 0), 0);
+    const totalBalance = rows.reduce((s, r) => s + (Number(r.balance) || 0), 0);
+    return { rows, totalDeposit, totalBalance };
 }
 
 // ── 5. Professional Email HTML builders ──────────────────────
@@ -488,124 +547,158 @@ function sectionTitle(icon, label, count) {
 
 // ─── Per-page email builders ──────────────────────────────────
 
-function buildAdvancePaymentEmail({ slot, dateLabel, rows, officeName }) {
-    const totalAmt = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+function buildAdvancePaymentEmail({ slot, dateLabel, data, officeName }) {
+    const { active, archived, totalActive, totalArchived, grandTotal } = data;
     const body = `
-        ${sectionTitle('💵', 'আজকের অগ্রিম পরিশোধ রেকর্ড', rows.length)}
+        ${sectionTitle('✅', 'সক্রিয় পরিশোধ রেকর্ড', active.length)}
         ${tableHTML(
-            ['নাম', 'পরিশোধের ধরণ', 'টাকা', 'তারিখ'], rows,
-            'আজকে কোনো পরিশোধ রেকর্ড নেই।',
+            ['কোড', 'নাম', 'শাখা', 'ধরণ', 'বিবরণ', 'টাকা', 'তারিখ'], active,
+            'কোনো সক্রিয় রেকর্ড নেই।',
             { amountCols: ['amount'], badgeCols: { type: 'type' } }
-        )}`;
+        )}
+        ${active.length > 0 ? `<p style="text-align:right;font-weight:700;color:#0f766e;font-family:${FONT_STACK};margin:8px 0 24px">সক্রিয় মোট: ${formatTaka(totalActive)}</p>` : ''}
+
+        ${sectionTitle('📦', 'আর্কাইভ রেকর্ড', archived.length)}
+        ${tableHTML(
+            ['কোড', 'নাম', 'শাখা', 'ধরণ', 'বিবরণ', 'টাকা', 'তারিখ'], archived,
+            'কোনো আর্কাইভ রেকর্ড নেই।',
+            { amountCols: ['amount'], badgeCols: { type: 'type' } }
+        )}
+        ${archived.length > 0 ? `<p style="text-align:right;font-weight:700;color:#6b7280;font-family:${FONT_STACK};margin:8px 0 0">আর্কাইভ মোট: ${formatTaka(totalArchived)}</p>` : ''}`;
     return emailShell({
         headerAccent: '#0f766e', headerAccent2: '#0d9488',
-        icon: '💵', title: 'অগ্রিম পরিশোধ ডাইজেস্ট',
-        subtitle: 'আজকের পরিশোধ সারসংক্ষেপ',
+        icon: '💵', title: 'অগ্রিম পরিশোধ — সম্পূর্ণ তালিকা',
+        subtitle: 'সক্রিয় ও আর্কাইভ সহ সকল রেকর্ড',
         dateLabel, slot, officeName, bodyHTML: body,
         statCards: [
-            { icon: '📝', label: 'মোট রেকর্ড', value: toBnNum(rows.length) },
-            { icon: '💰', label: 'মোট টাকা', value: formatTaka(totalAmt) },
+            { icon: '✅', label: 'সক্রিয় রেকর্ড',  value: toBnNum(active.length) },
+            { icon: '📦', label: 'আর্কাইভ রেকর্ড', value: toBnNum(archived.length) },
+            { icon: '💰', label: 'সক্রিয় মোট টাকা', value: formatTaka(totalActive) },
+            { icon: '🏦', label: 'সর্বমোট টাকা',    value: formatTaka(grandTotal) },
         ]
     });
 }
 
-function buildBusinessStatsEmail({ slot, dateLabel, rows, officeName }) {
+function buildBusinessStatsEmail({ slot, dateLabel, data, officeName }) {
+    const { rows, total } = data;
     const body = `
-        ${sectionTitle('📊', 'সংরক্ষিত ব্যবসা পরিসংখ্যান রিপোর্ট', rows.length)}
+        ${sectionTitle('📊', 'সকল ব্যবসা পরিসংখ্যান রিপোর্ট', rows.length)}
         ${tableHTML(
             ['তারিখ', 'ইনচার্জ', 'ব্যবসা সাল', 'পরিমাণ'], rows,
             'কোনো সংরক্ষিত রিপোর্ট পাওয়া যায়নি।',
             { amountCols: ['amount'] }
-        )}`;
+        )}
+        ${rows.length > 0 ? `<p style="text-align:right;font-weight:700;color:#251577;font-family:${FONT_STACK};margin:8px 0 0">মোট: ${formatTaka(total)}</p>` : ''}`;
     return emailShell({
         headerAccent: '#251577', headerAccent2: '#1d4ed8',
-        icon: '📊', title: 'ব্যবসা পরিসংখ্যান ডাইজেস্ট',
-        subtitle: 'সংরক্ষিত রিপোর্টের বিবরণ',
+        icon: '📊', title: 'ব্যবসা পরিসংখ্যান — সম্পূর্ণ তালিকা',
+        subtitle: 'সকল সংরক্ষিত রিপোর্টের বিবরণ',
         dateLabel, slot, officeName, bodyHTML: body,
         statCards: [
             { icon: '📋', label: 'মোট রিপোর্ট', value: toBnNum(rows.length) },
+            { icon: '💰', label: 'মোট পরিমাণ',  value: formatTaka(total) },
         ]
     });
 }
 
-function buildDonationEmail({ slot, dateLabel, rows, officeName }) {
-    const totalAmt = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+function buildDonationEmail({ slot, dateLabel, data, officeName }) {
+    const { active, archived, totalActive, totalArchived } = data;
     const body = `
-        ${sectionTitle('🤝', 'আজকের অনুদান রেকর্ড', rows.length)}
+        ${sectionTitle('✅', 'সক্রিয় অনুদান রেকর্ড', active.length)}
         ${tableHTML(
-            ['নাম', 'দানের ধরণ', 'টাকা', 'তারিখ'], rows,
-            'আজকে কোনো অনুদান রেকর্ড নেই।',
+            ['কোড', 'নাম', 'শাখা', 'ধরণ', 'টাকা', 'তারিখ'], active,
+            'কোনো সক্রিয় অনুদান রেকর্ড নেই।',
             { amountCols: ['amount'], badgeCols: { type: 'type' } }
-        )}`;
+        )}
+        ${active.length > 0 ? `<p style="text-align:right;font-weight:700;color:#7c3aed;font-family:${FONT_STACK};margin:8px 0 24px">সক্রিয় মোট: ${formatTaka(totalActive)}</p>` : ''}
+
+        ${sectionTitle('📦', 'আর্কাইভ রেকর্ড', archived.length)}
+        ${tableHTML(
+            ['কোড', 'নাম', 'শাখা', 'ধরণ', 'টাকা', 'তারিখ'], archived,
+            'কোনো আর্কাইভ রেকর্ড নেই।',
+            { amountCols: ['amount'], badgeCols: { type: 'type' } }
+        )}
+        ${archived.length > 0 ? `<p style="text-align:right;font-weight:700;color:#6b7280;font-family:${FONT_STACK};margin:8px 0 0">আর্কাইভ মোট: ${formatTaka(totalArchived)}</p>` : ''}`;
     return emailShell({
         headerAccent: '#7c3aed', headerAccent2: '#251577',
-        icon: '🤝', title: 'অনুদান ডাইজেস্ট',
-        subtitle: 'আজকের দানের হিসাব',
+        icon: '🤝', title: 'অনুদান — সম্পূর্ণ তালিকা',
+        subtitle: 'সক্রিয় ও আর্কাইভ সহ সকল রেকর্ড',
         dateLabel, slot, officeName, bodyHTML: body,
         statCards: [
-            { icon: '🤲', label: 'মোট অনুদান', value: toBnNum(rows.length) },
-            { icon: '💰', label: 'মোট অর্থ', value: formatTaka(totalAmt) },
+            { icon: '✅', label: 'সক্রিয় রেকর্ড',  value: toBnNum(active.length) },
+            { icon: '📦', label: 'আর্কাইভ রেকর্ড', value: toBnNum(archived.length) },
+            { icon: '💰', label: 'সক্রিয় মোট',     value: formatTaka(totalActive) },
         ]
     });
 }
 
-function buildHelpEmail({ slot, dateLabel, rows, officeName }) {
-    const overdueCount = rows.filter(r => r.date !== '(তারিখ নেই)').length;
+function buildHelpEmail({ slot, dateLabel, data, officeName }) {
+    const { pending, done } = data;
+    const today = new Date().toISOString().split('T')[0];
+    const overdue = pending.filter(r => r.date !== '(তারিখ নেই)' && r.date < today).length;
     const body = `
-        ${sectionTitle('📋', 'মুলতবি টাস্কসমূহ', rows.length)}
-        ${rows.length > 0
-            ? `<p style="font-size:.82rem;color:#dc2626;font-weight:600;margin:0 0 12px;font-family:${FONT_STACK}">
-                ⚠️ এই টাস্কগুলো এখনও সম্পন্ন হয়নি। দ্রুত সম্পন্ন করুন।
-               </p>` : ''}
+        ${sectionTitle('⏳', 'মুলতবি টাস্কসমূহ', pending.length)}
+        ${pending.length > 0 ? `<p style="font-size:.82rem;color:#dc2626;font-weight:600;margin:0 0 12px;font-family:${FONT_STACK}">
+            ⚠️ এই টাস্কগুলো এখনও সম্পন্ন হয়নি। দ্রুত সম্পন্ন করুন।
+           </p>` : ''}
         ${tableHTML(
-            ['টাস্কের শিরোনাম', 'নির্ধারিত তারিখ'], rows,
+            ['টাস্কের শিরোনাম', 'নির্ধারিত তারিখ'], pending,
             'অভিনন্দন! সকল টাস্ক সম্পন্ন হয়েছে। দারুণ কাজ!'
+        )}
+
+        ${sectionTitle('✅', 'সম্পন্ন টাস্কসমূহ', done.length)}
+        ${tableHTML(
+            ['টাস্কের শিরোনাম', 'তারিখ'], done,
+            'এখনো কোনো টাস্ক সম্পন্ন হয়নি।'
         )}`;
     return emailShell({
         headerAccent: '#b45309', headerAccent2: '#f59e0b',
-        icon: '📋', title: 'সহায়তা — মুলতবি টাস্ক',
-        subtitle: 'আজকের অসম্পন্ন কাজের তালিকা',
+        icon: '📋', title: 'সহায়তা — সম্পূর্ণ টাস্ক তালিকা',
+        subtitle: 'মুলতবি ও সম্পন্ন সকল টাস্কের বিবরণ',
         dateLabel, slot, officeName, bodyHTML: body,
         statCards: [
-            { icon: '⏳', label: 'মুলতবি টাস্ক', value: toBnNum(rows.length) },
-            { icon: '📅', label: 'মেয়াদোত্তীর্ণ', value: toBnNum(overdueCount) },
+            { icon: '⏳', label: 'মুলতবি টাস্ক',    value: toBnNum(pending.length) },
+            { icon: '🔴', label: 'মেয়াদোত্তীর্ণ',  value: toBnNum(overdue) },
+            { icon: '✅', label: 'সম্পন্ন টাস্ক',   value: toBnNum(done.length) },
         ]
     });
 }
 
-function buildIssueEmail({ slot, dateLabel, rows, officeName }) {
-    const highCount = rows.filter(r => r.priority === 'high').length;
-    const mapped = rows.map(r => ({
-        date:        r.date,
-        description: r.description,
-        priority:    r.priority,  // raw value — badge renderer uses this
-    }));
+function buildIssueEmail({ slot, dateLabel, data, officeName }) {
+    const { pending, resolved } = data;
+    const highCount = pending.filter(r => r.priority === 'high').length;
     const body = `
-        ${sectionTitle('⚠️', 'চলমান সমস্যাসমূহ', rows.length)}
-        ${highCount > 0
-            ? `<p style="font-size:.82rem;color:#dc2626;font-weight:600;margin:0 0 12px;font-family:${FONT_STACK}">
-                🔴 ${toBnNum(highCount)}টি উচ্চ-গুরুত্বের সমস্যা রয়েছে — তাৎক্ষণিক পদক্ষেপ নিন।
-               </p>` : ''}
+        ${sectionTitle('⚠️', 'চলমান সমস্যাসমূহ', pending.length)}
+        ${highCount > 0 ? `<p style="font-size:.82rem;color:#dc2626;font-weight:600;margin:0 0 12px;font-family:${FONT_STACK}">
+            🔴 ${toBnNum(highCount)}টি উচ্চ-গুরুত্বের সমস্যা রয়েছে — তাৎক্ষণিক পদক্ষেপ নিন।
+           </p>` : ''}
         ${tableHTML(
-            ['তারিখ', 'সমস্যার বিবরণ', 'গুরুত্ব'], mapped,
+            ['তারিখ', 'সমস্যার বিবরণ', 'গুরুত্ব'], pending,
             'কোনো চলমান সমস্যা নেই। সবকিছু ঠিকঠাক আছে!',
+            { badgeCols: { priority: 'priority' } }
+        )}
+
+        ${sectionTitle('✅', 'সমাধানকৃত সমস্যাসমূহ', resolved.length)}
+        ${tableHTML(
+            ['তারিখ', 'সমস্যার বিবরণ', 'গুরুত্ব'], resolved,
+            'কোনো সমাধানকৃত সমস্যা নেই।',
             { badgeCols: { priority: 'priority' } }
         )}`;
     return emailShell({
         headerAccent: '#dc2626', headerAccent2: '#9f1239',
-        icon: '⚠️', title: 'সমস্যা ও সমাধান ডাইজেস্ট',
-        subtitle: 'চলমান সমস্যার স্ট্যাটাস রিপোর্ট',
+        icon: '⚠️', title: 'সমস্যা ও সমাধান — সম্পূর্ণ তালিকা',
+        subtitle: 'চলমান ও সমাধানকৃত সকল সমস্যার স্ট্যাটাস',
         dateLabel, slot, officeName, bodyHTML: body,
         statCards: [
-            { icon: '🔴', label: 'উচ্চ গুরুত্ব', value: toBnNum(highCount) },
-            { icon: '📌', label: 'মোট চলমান', value: toBnNum(rows.length) },
+            { icon: '🔴', label: 'উচ্চ গুরুত্ব',      value: toBnNum(highCount) },
+            { icon: '📌', label: 'মোট চলমান',          value: toBnNum(pending.length) },
+            { icon: '✅', label: 'সমাধানকৃত',          value: toBnNum(resolved.length) },
         ]
     });
 }
 
-function buildPremiumEmail({ slot, dateLabel, rows, officeName }) {
-    const totalDeposit = rows.reduce((s, r) => s + (Number(r.deposit) || 0), 0);
-    const totalBalance = rows.reduce((s, r) => s + (Number(r.balance) || 0), 0);
+function buildPremiumEmail({ slot, dateLabel, data, officeName }) {
+    const { rows, totalDeposit, totalBalance } = data;
     const formattedRows = rows.map(r => ({
         type:    r.type,
         slipNo:  r.slipNo,
@@ -615,21 +708,29 @@ function buildPremiumEmail({ slot, dateLabel, rows, officeName }) {
         date:    r.date,
     }));
     const body = `
-        ${sectionTitle('🏦', 'আজকের প্রিমিয়াম জমার রেকর্ড', rows.length)}
+        ${sectionTitle('🏦', 'সকল প্রিমিয়াম জমার রেকর্ড', rows.length)}
         ${tableHTML(
             ['ধরণ', 'স্লিপ নং', 'টাকা', 'জমা', 'বকেয়া', 'তারিখ'], formattedRows,
-            'আজকে কোনো প্রিমিয়াম জমার রেকর্ড নেই।',
+            'কোনো প্রিমিয়াম জমার রেকর্ড নেই।',
             { badgeCols: { type: 'type' } }
-        )}`;
+        )}
+        ${rows.length > 0 ? `
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:10px">
+          <tr>
+            <td style="text-align:right;font-weight:700;color:#0369a1;font-family:${FONT_STACK};padding:4px 0">
+              মোট জমা: ${formatTaka(totalDeposit)} &nbsp;|&nbsp; মোট বকেয়া: ${formatTaka(totalBalance)}
+            </td>
+          </tr>
+        </table>` : ''}`;
     return emailShell({
         headerAccent: '#0369a1', headerAccent2: '#251577',
-        icon: '🏦', title: 'প্রিমিয়াম জমা ডাইজেস্ট',
-        subtitle: 'আজকের প্রিমিয়াম কালেকশন রিপোর্ট',
+        icon: '🏦', title: 'প্রিমিয়াম জমা — সম্পূর্ণ তালিকা',
+        subtitle: 'সকল প্রিমিয়াম কালেকশনের বিবরণ',
         dateLabel, slot, officeName, bodyHTML: body,
         statCards: [
-            { icon: '📑', label: 'মোট এন্ট্রি', value: toBnNum(rows.length) },
-            { icon: '✅', label: 'মোট জমা', value: formatTaka(totalDeposit) },
-            { icon: '🔔', label: 'মোট বকেয়া', value: formatTaka(totalBalance) },
+            { icon: '📑', label: 'মোট এন্ট্রি',  value: toBnNum(rows.length) },
+            { icon: '✅', label: 'মোট জমা',       value: formatTaka(totalDeposit) },
+            { icon: '🔔', label: 'মোট বকেয়া',    value: formatTaka(totalBalance) },
         ]
     });
 }
@@ -640,45 +741,57 @@ function getPageDefinitions(slot) {
     return [
         {
             key: 'advance_payment', name: 'অগ্রিম পরিশোধ', icon: '💵', prefKey: 'advance_payment',
-            fetch:      (uid, today) => fetchAdvancePayments(uid, today),
-            buildEmail: (params)     => buildAdvancePaymentEmail(params),
-            subject:    (slot, dateLabel, rows) =>
-                `💵 অগ্রিম পরিশোধ ${slot === 'morning' ? '🌅 সকাল' : '🌆 সন্ধ্যা'} — ${rows.length}টি রেকর্ড · ${dateLabel}`,
+            fetch:      (uid) => fetchAdvancePayments(uid),
+            isEmpty:    (data) => data.active.length === 0 && data.archived.length === 0,
+            totalRows:  (data) => data.active.length + data.archived.length,
+            buildEmail: (params) => buildAdvancePaymentEmail(params),
+            subject:    (slot, dateLabel, data) =>
+                `💵 অগ্রিম পরিশোধ ${slot === 'morning' ? '🌅 সকাল' : '🌆 সন্ধ্যা'} — সক্রিয়: ${data.active.length}টি · আর্কাইভ: ${data.archived.length}টি · ${dateLabel}`,
         },
         {
             key: 'business_stats', name: 'ব্যবসা পরিসংখ্যান', icon: '📊', prefKey: 'business_stats',
-            fetch:      (uid, _today) => fetchBusinessStats(uid),
-            buildEmail: (params)      => buildBusinessStatsEmail(params),
-            subject:    (slot, dateLabel, rows) =>
-                `📊 ব্যবসা পরিসংখ্যান ${slot === 'morning' ? '🌅 সকাল' : '🌆 সন্ধ্যা'} — ${rows.length}টি রিপোর্ট · ${dateLabel}`,
+            fetch:      (uid) => fetchBusinessStats(uid),
+            isEmpty:    (data) => data.rows.length === 0,
+            totalRows:  (data) => data.rows.length,
+            buildEmail: (params) => buildBusinessStatsEmail(params),
+            subject:    (slot, dateLabel, data) =>
+                `📊 ব্যবসা পরিসংখ্যান ${slot === 'morning' ? '🌅 সকাল' : '🌆 সন্ধ্যা'} — ${data.rows.length}টি রিপোর্ট · ${dateLabel}`,
         },
         {
             key: 'donation', name: 'অনুদান', icon: '🤝', prefKey: 'donation',
-            fetch:      (uid, today) => fetchDonations(uid, today),
-            buildEmail: (params)     => buildDonationEmail(params),
-            subject:    (slot, dateLabel, rows) =>
-                `🤝 অনুদান ${slot === 'morning' ? '🌅 সকাল' : '🌆 সন্ধ্যা'} — ${rows.length}টি রেকর্ড · ${dateLabel}`,
+            fetch:      (uid) => fetchDonations(uid),
+            isEmpty:    (data) => data.active.length === 0 && data.archived.length === 0,
+            totalRows:  (data) => data.active.length + data.archived.length,
+            buildEmail: (params) => buildDonationEmail(params),
+            subject:    (slot, dateLabel, data) =>
+                `🤝 অনুদান ${slot === 'morning' ? '🌅 সকাল' : '🌆 সন্ধ্যা'} — সক্রিয়: ${data.active.length}টি · আর্কাইভ: ${data.archived.length}টি · ${dateLabel}`,
         },
         {
             key: 'help', name: 'সহায়তা', icon: '📋', prefKey: 'help',
-            fetch:      (uid, today) => fetchPendingTasks(uid, today),
-            buildEmail: (params)     => buildHelpEmail(params),
-            subject:    (slot, dateLabel, rows) =>
-                `📋 সহায়তা ${slot === 'morning' ? '🌅 সকাল' : '🌆 সন্ধ্যা'} — ${rows.length}টি মুলতবি টাস্ক · ${dateLabel}`,
+            fetch:      (uid) => fetchAllTasks(uid),
+            isEmpty:    (data) => data.pending.length === 0 && data.done.length === 0,
+            totalRows:  (data) => data.pending.length + data.done.length,
+            buildEmail: (params) => buildHelpEmail(params),
+            subject:    (slot, dateLabel, data) =>
+                `📋 সহায়তা ${slot === 'morning' ? '🌅 সকাল' : '🌆 সন্ধ্যা'} — মুলতবি: ${data.pending.length}টি · সম্পন্ন: ${data.done.length}টি · ${dateLabel}`,
         },
         {
             key: 'office_issue', name: 'সমস্যা ও সমাধান', icon: '⚠️', prefKey: 'office_issue',
-            fetch:      (uid, _today) => fetchIssues(uid),
-            buildEmail: (params)      => buildIssueEmail(params),
-            subject:    (slot, dateLabel, rows) =>
-                `⚠️ সমস্যা ও সমাধান ${slot === 'morning' ? '🌅 সকাল' : '🌆 সন্ধ্যা'} — ${rows.length}টি চলমান · ${dateLabel}`,
+            fetch:      (uid) => fetchIssues(uid),
+            isEmpty:    (data) => data.pending.length === 0 && data.resolved.length === 0,
+            totalRows:  (data) => data.pending.length + data.resolved.length,
+            buildEmail: (params) => buildIssueEmail(params),
+            subject:    (slot, dateLabel, data) =>
+                `⚠️ সমস্যা ও সমাধান ${slot === 'morning' ? '🌅 সকাল' : '🌆 সন্ধ্যা'} — চলমান: ${data.pending.length}টি · সমাধান: ${data.resolved.length}টি · ${dateLabel}`,
         },
         {
             key: 'premium_submit', name: 'প্রিমিয়াম জমা', icon: '🏦', prefKey: 'premium_submit',
-            fetch:      (uid, today) => fetchPremiumStatements(uid, today),
-            buildEmail: (params)     => buildPremiumEmail(params),
-            subject:    (slot, dateLabel, rows) =>
-                `🏦 প্রিমিয়াম জমা ${slot === 'morning' ? '🌅 সকাল' : '🌆 সন্ধ্যা'} — ${rows.length}টি এন্ট্রি · ${dateLabel}`,
+            fetch:      (uid) => fetchPremiumStatements(uid),
+            isEmpty:    (data) => data.rows.length === 0,
+            totalRows:  (data) => data.rows.length,
+            buildEmail: (params) => buildPremiumEmail(params),
+            subject:    (slot, dateLabel, data) =>
+                `🏦 প্রিমিয়াম জমা ${slot === 'morning' ? '🌅 সকাল' : '🌆 সন্ধ্যা'} — ${data.rows.length}টি এন্ট্রি · ${dateLabel}`,
         },
     ];
 }
@@ -746,11 +859,19 @@ async function run() {
                 }
 
                 try {
-                    const rows     = await page.fetch(uid, today);
-                    const htmlBody = page.buildEmail({ slot, dateLabel, rows, officeName });
-                    const subject  = page.subject(slot, dateLabel, rows);
+                    const data = await page.fetch(uid);
+
+                    // Skip sending if module has no records at all
+                    if (page.isEmpty(data)) {
+                        console.log(`  ⏭️  [${page.name}] no records — skip (no empty email sent).`);
+                        totalSkipped++;
+                        continue;
+                    }
+
+                    const htmlBody = page.buildEmail({ slot, dateLabel, data, officeName });
+                    const subject  = page.subject(slot, dateLabel, data);
                     await sendEmail({ toEmail: sub.email, toName, subject, htmlBody });
-                    console.log(`  📧 [${page.name}] → ${sub.email} — OK (${rows.length} rows)`);
+                    console.log(`  📧 [${page.name}] → ${sub.email} — OK (${page.totalRows(data)} records)`);
                     totalSent++;
                 } catch (err) {
                     console.error(`  ❌ [${page.name}] FAILED: ${err.message}`);
