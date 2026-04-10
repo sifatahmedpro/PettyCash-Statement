@@ -1,40 +1,53 @@
 /**
  * ============================================================
- * push-worker/send-push.js  —  v3.0 (resting 23:00–06:00 + per-module pushes)
+ * push-worker/send-push.js  —  v4.0
  *
- * ROOT CAUSE FIX (v2.2 → v2.3):
- *   The previous query for module notifications used:
- *     .where('pushed', '!=', true)
- *     .orderBy('pushed')
- *     .orderBy('timestamp', 'asc')
- *   This requires a Firestore composite index that was never
- *   created in the Firebase console. When the index is missing,
- *   Firestore returns an EMPTY result silently in Node.js —
- *   no error is thrown — so module notifications were NEVER sent.
+ * ── WHAT WAS BROKEN & WHY ────────────────────────────────────
  *
- *   Additionally, documents written by notify.js before this
- *   feature existed have NO 'pushed' field at all. Firestore's
- *   inequality filter (.where('pushed', '!=', true)) excludes
- *   documents where the field is absent, so those old
- *   notifications were also silently skipped.
+ * BUG 1 — Module notifications only fired ONCE, then stopped forever.
+ *   Root cause: after the first successful delivery, every notification
+ *   doc was permanently marked pushed:true. Every subsequent GitHub
+ *   Actions run found zero unpushed docs and exited with "No unsent
+ *   notifications." Even a manual trigger produced nothing new because
+ *   ALL existing docs were already pushed:true. The only way to ever
+ *   get another module notification was to take a new action on a page
+ *   (which writes a fresh doc with pushed:false). But even then, once
+ *   that single new doc was delivered it disappeared forever.
  *
- * THE FIX:
- *   Replace the fragile composite-index query with a simple
- *   fetch-all-then-filter approach:
- *     1. Fetch the latest 50 notifications ordered by timestamp desc
- *        (single-field index — always exists, no setup needed).
- *     2. Filter in-memory: keep only docs where pushed !== true.
- *        This correctly catches docs with pushed=false, pushed=null,
- *        pushed=undefined, or the field missing entirely.
- *     3. Process oldest-first (reverse) so notifications arrive
- *        in chronological order.
+ * BUG 2 — Module notifications had no "hourly repeat" mechanism.
+ *   Task reminders repeat every hour (until the user taps) because they
+ *   use a per-day statusKey stored in pushState/seenToday. If the key
+ *   isn't in seenToday, the push fires. Module notifications had no
+ *   equivalent — there was no concept of "send again next hour if the
+ *   user hasn't acted yet."
  *
- * WHAT IS UNCHANGED vs v2.2:
- *   • PART 1 — Task reminders: identical logic.
- *   • PART 2 — Module notifications: same mark-pushed-true
- *     behaviour after sending. Only the query strategy changed.
+ * BUG 3 — No cleanup. pushed:true docs accumulated forever, growing
+ *   the notifications collection indefinitely.
+ *
+ * ── THE FIX (v4.0) ───────────────────────────────────────────
+ *
+ * Module notifications now use the SAME daily seenToday pattern as
+ * task reminders:
+ *
+ *   • A per-tag statusKey is built:  "notif-{tag}-{uid}-{YYYY-MM-DD}"
+ *   • Before sending, check pushState/seenToday for that key.
+ *   • If already seen today → skip (user already received it today).
+ *   • If NOT seen → send the push, then ADD the key to seenToday
+ *     (so the same tag doesn't fire again this hour/run).
+ *   • The seenToday document resets every calendar day automatically
+ *     (same mechanism as tasks — the date field is checked).
+ *   • pushed:true on individual notification docs is NO LONGER USED
+ *     for gating delivery. It is still written for audit purposes
+ *     but NOT read as a gate.
+ *
+ * Cleanup: notification docs older than CLEANUP_DAYS (7 days) are
+ *   deleted at the end of each run to keep the collection lean.
+ *
+ * ── WHAT IS UNCHANGED ────────────────────────────────────────
+ *   • PART 1 — Task reminders: identical logic, same statusKey format.
  *   • sendToAllDevices(), extractKeys(), VAPID setup — unchanged.
- *   • Time helpers and resting-hours guard — unchanged.
+ *   • Resting hours guard: 00:00–06:00 Dhaka = silent.
+ *   • Cron schedule in push-notify.yml — unchanged.
  * ============================================================
  */
 
@@ -110,34 +123,31 @@ function extractKeys(subscription) {
     return null;
 }
 
-// ── 5. Build a deterministic, per-user task-reminder key ─────
+// ── 5. Build deterministic status keys ───────────────────────
 //
-// FIX (v3.2): The previous implementation encoded Date.now() +
-// random bytes, so the key was DIFFERENT on every GitHub Actions
-// run. The client's snooze lookup (snoozedMap[statusKey]) would
-// never match because the key written to Firestore on a previous
-// run is gone — only the new random key exists this run.
+// TASK REMINDER key: same for every run on the same calendar day.
+//   Format: "tasks-reminder-{uid}-{YYYY-MM-DD}"
+//   The seenToday check prevents re-sending after user taps.
 //
-// Correct approach: use a stable key that is the SAME for every
-// run on the same calendar day. The user's device stores the
-// snooze against this key; the next run (60 min later, same day)
-// produces the identical key and the lookup succeeds.
-//
-// Key format: "tasks-reminder-{uid}-{YYYY-MM-DD}"
-//   • Unique per user — prevents cross-user collisions.
-//   • Unique per calendar day — resets at midnight Dhaka so the
-//     "already seen today" set is also naturally scoped.
-//   • Deterministic within a day — snooze lookups always work.
+// MODULE NOTIFICATION key: per-tag, per-day.
+//   Format: "notif-{tag}-{uid}-{YYYY-MM-DD}"
+//   Allows one push per tag per day regardless of how many
+//   individual notification docs the tag has accumulated.
+//   Resets at midnight Dhaka so each new day gets fresh pushes.
 
-function buildStatusKey(uid) {
+function buildTaskStatusKey(uid) {
     return `tasks-reminder-${uid}-${getTodayStr()}`;
+}
+
+function buildNotifStatusKey(uid, tag) {
+    return `notif-${tag}-${uid}-${getTodayStr()}`;
 }
 
 // ── 6. Send one push to all devices for a user ───────────────
 /**
  * Sends a single push payload to every registered device for uid.
  * Returns { sent, failed } counts.
- * Cleans up expired subscriptions (410/404) automatically.
+ * Cleans up expired subscriptions (410/404/403) automatically.
  */
 async function sendToAllDevices(subsSnap, payload, label) {
     let sent = 0, failed = 0;
@@ -174,7 +184,44 @@ async function sendToAllDevices(subsSnap, payload, label) {
     return { sent, failed };
 }
 
-// ── 7. Main function ──────────────────────────────────────────
+// ── 7. Read seenToday document for a user ────────────────────
+/**
+ * Returns { currentSeen: string[], snoozedMap: object }
+ * Both are scoped to today — stale data from previous days is discarded.
+ */
+async function readSeenToday(usersRef, uid, today) {
+    const seenRef  = usersRef.doc(uid).collection('pushState').doc('seenToday');
+    const seenSnap = await seenRef.get();
+    const seenData = seenSnap.exists ? seenSnap.data() : {};
+    const seenDate = seenData.date || '';
+    return {
+        seenRef,
+        currentSeen: seenDate === today ? (seenData.keys    || []) : [],
+        snoozedMap:  seenDate === today ? (seenData.snoozed || {}) : {}
+    };
+}
+
+// ── 8. Mark a statusKey as seen today ────────────────────────
+/**
+ * Adds statusKey to the seenToday document.
+ * Re-reads the doc to avoid overwriting concurrent writes.
+ */
+async function markSeenToday(seenRef, statusKey, today) {
+    const snap = await seenRef.get();
+    const data = snap.exists ? snap.data() : {};
+    const existingDate = data.date || '';
+    const keys    = existingDate === today ? (data.keys    || []) : [];
+    const snoozed = existingDate === today ? (data.snoozed || {}) : {};
+    if (!keys.includes(statusKey)) {
+        const trimmed = keys.length >= 200 ? keys.slice(-199) : keys;
+        await seenRef.set({ date: today, keys: [...trimmed, statusKey], snoozed });
+    }
+}
+
+// ── 9. Main function ──────────────────────────────────────────
+
+// How many days back to keep notification docs. Older docs are deleted.
+const CLEANUP_DAYS = 7;
 
 async function run() {
     const dhakaHour = getDhakaHour();
@@ -183,9 +230,11 @@ async function run() {
     console.log('🚀 Push worker started at', new Date().toISOString());
     console.log('📅 Today (Dhaka):', today, '| Hour:', dhakaHour);
 
-    // Resting hours: 23:00–06:00 Dhaka — no notifications
-    if (dhakaHour < 6 || dhakaHour >= 23) {
-        console.log('🌙 Resting hours (23:00–06:00 Dhaka). Exiting.');
+    // ── Resting hours: 00:00–06:00 Dhaka — no notifications ──
+    // Silence from midnight (12 AM) to 6 AM Dhaka.
+    // Active hours: 06:00–23:59 Dhaka.
+    if (dhakaHour < 6) {
+        console.log('🌙 Resting hours (00:00–06:00 Dhaka). Exiting silently.');
         process.exit(0);
     }
 
@@ -219,9 +268,13 @@ async function run() {
             }
             console.log(`  📱 ${subsSnap.size} device subscription(s).`);
 
+            // ── Step B: Read seenToday once, reuse across PART 1 & 2 ──
+            const { seenRef, currentSeen, snoozedMap } = await readSeenToday(usersRef, uid, today);
+
             // ════════════════════════════════════════════════════
             // PART 1 — TASK REMINDERS
-            // Unique key per run, retry every 30 min until user taps.
+            // Fires every run until user taps "Seen" or snoozes.
+            // Uses deterministic daily statusKey so snooze works.
             // ════════════════════════════════════════════════════
 
             console.log(`  [TASKS] Checking pending tasks...`);
@@ -253,14 +306,7 @@ async function run() {
             if (pendingTasks.length === 0) {
                 console.log(`  [TASKS] ✅ No pending tasks.`);
             } else {
-                const statusKey   = buildStatusKey(uid);
-                const seenRef     = usersRef.doc(uid).collection('pushState').doc('seenToday');
-                const seenSnap    = await seenRef.get();
-                const seenData    = seenSnap.exists ? seenSnap.data() : {};
-
-                const seenDate    = seenData.date || '';
-                const currentSeen = seenDate === today ? (seenData.keys    || []) : [];
-                const snoozedMap  = seenDate === today ? (seenData.snoozed || {}) : {};
+                const statusKey   = buildTaskStatusKey(uid);
                 const snoozeUntil = snoozedMap[statusKey] || 0;
 
                 if (currentSeen.includes(statusKey)) {
@@ -295,90 +341,103 @@ async function run() {
             }
 
             // ════════════════════════════════════════════════════
-            // PART 2 — PER-MODULE NOTIFICATIONS  (v3.0)
+            // PART 2 — PER-MODULE NOTIFICATIONS  (v4.0 rewrite)
             //
-            // Each module tag (task-manager, office-issue, petty-cash,
-            // advance-payment, manpower, etc.) gets its OWN separate
-            // push notification so the user knows exactly which module
-            // triggered the alert.
+            // FIX: The old system marked each notification doc
+            // pushed:true permanently — so after the first delivery
+            // they NEVER fired again.
             //
-            // Strategy:
-            //   1. Fetch latest 50 notifications, filter unpushed in-memory.
+            // New approach:
+            //   1. Fetch ALL notification docs (not filtered by pushed).
             //   2. Group by tag.
-            //   3. Send ONE push per group — title = module name, body
-            //      lists up to 3 items then "+ N more".
-            //   4. Mark all docs in the group as pushed:true.
+            //   3. For each tag, build a daily statusKey.
+            //   4. Check seenToday — if the tag key is there, skip.
+            //      If not, send the push for that tag.
+            //   5. After sending, add the tag key to seenToday.
+            //      This prevents the same tag firing again in the
+            //      same day (resets at midnight Dhaka).
+            //   6. Mark the individual docs pushed:true for audit,
+            //      but this NO LONGER gates delivery.
+            //
+            // Effect: each module tag fires at most once per day,
+            //   every day that new notifications exist for it.
+            //   The user gets fresh module pushes each day as long
+            //   as activity is happening on those pages.
             // ════════════════════════════════════════════════════
 
-            console.log(`  [NOTIFS] Checking unread/unsent notifications (per-module)...`);
+            console.log(`  [NOTIFS] Checking module notifications (per-tag daily push)...`);
 
             const notifRef = usersRef.doc(uid).collection('notifications');
 
-            // FIX (Watch Point C): The previous single `.limit(50)` query meant
-            // any notification beyond the 50th most recent was permanently skipped
-            // — it was never fetched, never filtered, and never marked pushed:true,
-            // so it accumulated as undeliverable debt forever.
-            //
-            // Fix: paginate through ALL notifications (oldest-to-newest within each
-            // page) and collect every doc where pushed !== true. This correctly
-            // catches docs with pushed=false, pushed=null, pushed=undefined, or
-            // the field missing entirely — same as the in-memory filter before.
-            //
-            // Early-exit optimisation: if a full page arrives with zero unpushed
-            // docs, all older pages will also be all-pushed (they were processed
-            // in earlier runs), so we can stop paging immediately.
+            // Paginate through ALL notification docs.
+            // We no longer filter by pushed:true/false — ALL docs are
+            // considered so we can group them by tag and apply the
+            // daily seenToday gate instead.
             const PAGE_SIZE = 50;
-            let allUnsentDocs = [];
-            let lastDoc       = null;
+            let allNotifDocs = [];
+            let lastDoc      = null;
 
             while (true) {
                 let pageQuery = notifRef.orderBy('timestamp', 'desc').limit(PAGE_SIZE);
                 if (lastDoc) pageQuery = pageQuery.startAfter(lastDoc);
 
-                const pageSnap  = await pageQuery.get();
+                const pageSnap = await pageQuery.get();
                 if (pageSnap.empty) break;
 
-                const unsentOnPage = pageSnap.docs.filter(d => d.data().pushed !== true);
-                allUnsentDocs = allUnsentDocs.concat(unsentOnPage);
+                allNotifDocs = allNotifDocs.concat(pageSnap.docs);
 
-                // If this page had no unpushed docs, all older pages are also fully
-                // pushed — no need to continue paginating.
-                if (unsentOnPage.length === 0) break;
-
-                if (pageSnap.size < PAGE_SIZE) break;   // last page reached
+                if (pageSnap.size < PAGE_SIZE) break;
                 lastDoc = pageSnap.docs[pageSnap.docs.length - 1];
             }
 
-            // Sort oldest-first so notifications arrive in chronological order
-            const unsentDocs = allUnsentDocs.sort((a, b) =>
-                (a.data().timestamp?.toMillis?.() ?? 0) - (b.data().timestamp?.toMillis?.() ?? 0)
-            );
-
-            if (unsentDocs.length === 0) {
-                console.log(`  [NOTIFS] ✅ No unsent notifications.`);
+            if (allNotifDocs.length === 0) {
+                console.log(`  [NOTIFS] ✅ No notifications found.`);
             } else {
-                console.log(`  [NOTIFS] 📋 ${unsentDocs.length} unsent notification(s). Grouping by module...`);
+                console.log(`  [NOTIFS] 📋 ${allNotifDocs.length} total notification(s). Grouping by module tag...`);
 
-                // Group by tag
+                // Group ALL docs by tag (regardless of pushed status)
                 const groups = {};
-                for (const notifDoc of unsentDocs) {
+                for (const notifDoc of allNotifDocs) {
                     const data = notifDoc.data();
                     const tag  = data.tag || 'general';
                     if (!groups[tag]) groups[tag] = [];
                     groups[tag].push(notifDoc);
                 }
 
+                // Re-read fresh subs before sending
                 const freshSubsSnap = await subsRef.get();
                 if (freshSubsSnap.empty) {
                     console.log(`  [NOTIFS] ⏭️  No device subscriptions left — skipping notifications.`);
                 } else {
                     for (const [tag, docs] of Object.entries(groups)) {
-                        const count    = docs.length;
-                        const latest   = docs[docs.length - 1].data(); // most recent in group
-                        const title    = latest.title || '🔔 নতুন নোটিফিকেশন';
+                        // Build the per-tag daily statusKey
+                        const notifStatusKey = buildNotifStatusKey(uid, tag);
+                        const snoozeUntil    = snoozedMap[notifStatusKey] || 0;
 
-                        // Build body: list up to 3 messages, then "+ N more"
-                        const preview = docs.slice(-3).map(d => d.data().message || '').filter(Boolean);
+                        if (currentSeen.includes(notifStatusKey)) {
+                            console.log(`  [NOTIFS] 👁️  [${tag}] Already sent today — skipping.`);
+                            totalSkipped++;
+                            continue;
+                        }
+
+                        if (Date.now() < snoozeUntil) {
+                            const minsLeft = Math.ceil((snoozeUntil - Date.now()) / 60000);
+                            console.log(`  [NOTIFS] 😴 [${tag}] Snoozed for ${minsLeft} more min — skipping.`);
+                            totalSkipped++;
+                            continue;
+                        }
+
+                        // Sort docs oldest-first for the preview
+                        const sortedDocs = docs.slice().sort((a, b) =>
+                            (a.data().timestamp?.toMillis?.() ?? 0) - (b.data().timestamp?.toMillis?.() ?? 0)
+                        );
+
+                        const count  = sortedDocs.length;
+                        const latest = sortedDocs[sortedDocs.length - 1].data();
+                        const title  = latest.title || '🔔 নতুন নোটিফিকেশন';
+
+                        // Build body: show up to 3 recent messages
+                        const preview = sortedDocs.slice(-3).map(d => d.data().message || '').filter(Boolean);
                         let body;
                         if (count === 1) {
                             body = preview[0] || '';
@@ -389,13 +448,13 @@ async function run() {
                             if (extra > 0) body += ` (+${extra} আরও)`;
                         }
 
-                        console.log(`  [NOTIFS] → Module [${tag}]: ${count} notification(s)`);
+                        console.log(`  [NOTIFS] → Module [${tag}]: ${count} doc(s) — sending push...`);
 
                         const payload = JSON.stringify({
                             title,
                             body,
                             tag:       `notif-${tag}`,
-                            notifId:   docs[docs.length - 1].id,
+                            notifId:   sortedDocs[sortedDocs.length - 1].id,
                             uid,
                             projectId: process.env.FIREBASE_PROJECT_ID,
                             apiKey:    process.env.FIREBASE_API_KEY || ''
@@ -407,25 +466,53 @@ async function run() {
                         totalSent   += sent;
                         totalFailed += failed;
 
-                        // BUG FIX (v3.1): Only mark pushed:true when at least one device
-                        // actually received the push. Previously, marking was unconditional —
-                        // if all subscriptions failed (missing keys, expired, etc.) the
-                        // notifications were permanently marked pushed:true and never retried.
                         if (sent > 0) {
-                            const batch = admin.firestore().batch();
-                            for (const notifDoc of docs) {
-                                batch.update(notifDoc.ref, {
-                                    pushed:     true,
-                                    pushSentAt: admin.firestore.FieldValue.serverTimestamp()
-                                });
+                            // Mark this tag as "sent today" in seenToday so the
+                            // same module doesn't fire again until tomorrow.
+                            await markSeenToday(seenRef, notifStatusKey, today);
+                            console.log(`  [NOTIFS] ✔ [${tag}] Sent ${sent} push(es). Marked seen today — resets midnight Dhaka.`);
+
+                            // Also mark individual docs pushed:true for audit trail.
+                            // NOTE: this is audit-only — v4.0 no longer reads pushed:true
+                            // as a delivery gate.
+                            const batch = db.batch();
+                            for (const notifDoc of sortedDocs) {
+                                if (notifDoc.data().pushed !== true) {
+                                    batch.update(notifDoc.ref, {
+                                        pushed:     true,
+                                        pushSentAt: admin.firestore.FieldValue.serverTimestamp()
+                                    });
+                                }
                             }
                             await batch.commit();
-                            console.log(`  [NOTIFS] ✔ [${tag}] Pushed & marked ${count} doc(s).`);
                         } else {
-                            console.log(`  [NOTIFS] ⚠️  [${tag}] 0 devices received push — NOT marking pushed:true, will retry next run.`);
+                            console.log(`  [NOTIFS] ⚠️  [${tag}] 0 devices received push — will retry next run.`);
                         }
                     }
                 }
+            }
+
+            // ════════════════════════════════════════════════════
+            // PART 3 — CLEANUP OLD NOTIFICATION DOCS
+            //
+            // Delete notification docs older than CLEANUP_DAYS (7 days)
+            // to prevent unbounded collection growth.
+            // ════════════════════════════════════════════════════
+
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - CLEANUP_DAYS);
+            const cutoffTimestamp = admin.firestore.Timestamp.fromDate(cutoffDate);
+
+            const oldNotifSnap = await notifRef
+                .where('timestamp', '<', cutoffTimestamp)
+                .limit(200)
+                .get();
+
+            if (!oldNotifSnap.empty) {
+                const cleanBatch = db.batch();
+                oldNotifSnap.docs.forEach(d => cleanBatch.delete(d.ref));
+                await cleanBatch.commit();
+                console.log(`  [CLEANUP] 🗑️  Deleted ${oldNotifSnap.size} notification doc(s) older than ${CLEANUP_DAYS} days.`);
             }
 
             console.log('');
