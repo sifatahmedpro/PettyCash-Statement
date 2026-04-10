@@ -110,13 +110,27 @@ function extractKeys(subscription) {
     return null;
 }
 
-// ── 5. Build a unique push ID for this specific run ──────────
+// ── 5. Build a deterministic, per-user task-reminder key ─────
+//
+// FIX (v3.2): The previous implementation encoded Date.now() +
+// random bytes, so the key was DIFFERENT on every GitHub Actions
+// run. The client's snooze lookup (snoozedMap[statusKey]) would
+// never match because the key written to Firestore on a previous
+// run is gone — only the new random key exists this run.
+//
+// Correct approach: use a stable key that is the SAME for every
+// run on the same calendar day. The user's device stores the
+// snooze against this key; the next run (60 min later, same day)
+// produces the identical key and the lookup succeeds.
+//
+// Key format: "tasks-reminder-{uid}-{YYYY-MM-DD}"
+//   • Unique per user — prevents cross-user collisions.
+//   • Unique per calendar day — resets at midnight Dhaka so the
+//     "already seen today" set is also naturally scoped.
+//   • Deterministic within a day — snooze lookups always work.
 
 function buildStatusKey(uid) {
-    const ts   = Date.now().toString(36);
-    const rnd  = Math.floor(Math.random() * 0xFFFF).toString(16).padStart(4, '0');
-    const user = uid.slice(0, 6);
-    return `push_${user}_${ts}_${rnd}`;
+    return `tasks-reminder-${uid}-${getTodayStr()}`;
 }
 
 // ── 6. Send one push to all devices for a user ───────────────
@@ -149,8 +163,8 @@ async function sendToAllDevices(subsSnap, payload, label) {
         } catch (pushErr) {
             console.error(`  ❌ [${label}] FAILED for device ${subDoc.id.slice(0, 12)}...`);
             console.error(`     Status: ${pushErr.statusCode} — ${pushErr.body}`);
-            if (pushErr.statusCode === 410 || pushErr.statusCode === 404) {
-                console.warn(`  🗑️  Expired subscription — removing.`);
+            if (pushErr.statusCode === 410 || pushErr.statusCode === 404 || pushErr.statusCode === 403) {
+                console.warn(`  🗑️  Invalid/expired subscription (${pushErr.statusCode}) — removing.`);
                 await subDoc.ref.delete();
             } else {
                 failed++;
@@ -300,15 +314,45 @@ async function run() {
 
             const notifRef = usersRef.doc(uid).collection('notifications');
 
-            const notifSnap = await notifRef
-                .orderBy('timestamp', 'desc')
-                .limit(50)
-                .get();
+            // FIX (Watch Point C): The previous single `.limit(50)` query meant
+            // any notification beyond the 50th most recent was permanently skipped
+            // — it was never fetched, never filtered, and never marked pushed:true,
+            // so it accumulated as undeliverable debt forever.
+            //
+            // Fix: paginate through ALL notifications (oldest-to-newest within each
+            // page) and collect every doc where pushed !== true. This correctly
+            // catches docs with pushed=false, pushed=null, pushed=undefined, or
+            // the field missing entirely — same as the in-memory filter before.
+            //
+            // Early-exit optimisation: if a full page arrives with zero unpushed
+            // docs, all older pages will also be all-pushed (they were processed
+            // in earlier runs), so we can stop paging immediately.
+            const PAGE_SIZE = 50;
+            let allUnsentDocs = [];
+            let lastDoc       = null;
 
-            // Filter unpushed; keep oldest-first within each group
-            const unsentDocs = notifSnap.docs
-                .filter(d => d.data().pushed !== true)
-                .reverse();
+            while (true) {
+                let pageQuery = notifRef.orderBy('timestamp', 'desc').limit(PAGE_SIZE);
+                if (lastDoc) pageQuery = pageQuery.startAfter(lastDoc);
+
+                const pageSnap  = await pageQuery.get();
+                if (pageSnap.empty) break;
+
+                const unsentOnPage = pageSnap.docs.filter(d => d.data().pushed !== true);
+                allUnsentDocs = allUnsentDocs.concat(unsentOnPage);
+
+                // If this page had no unpushed docs, all older pages are also fully
+                // pushed — no need to continue paginating.
+                if (unsentOnPage.length === 0) break;
+
+                if (pageSnap.size < PAGE_SIZE) break;   // last page reached
+                lastDoc = pageSnap.docs[pageSnap.docs.length - 1];
+            }
+
+            // Sort oldest-first so notifications arrive in chronological order
+            const unsentDocs = allUnsentDocs.sort((a, b) =>
+                (a.data().timestamp?.toMillis?.() ?? 0) - (b.data().timestamp?.toMillis?.() ?? 0)
+            );
 
             if (unsentDocs.length === 0) {
                 console.log(`  [NOTIFS] ✅ No unsent notifications.`);
@@ -363,20 +407,22 @@ async function run() {
                         totalSent   += sent;
                         totalFailed += failed;
 
-                        // Mark all docs in this group as pushed
-                        const batch = admin.firestore().batch();
-                        for (const notifDoc of docs) {
-                            batch.update(notifDoc.ref, {
-                                pushed:     true,
-                                pushSentAt: admin.firestore.FieldValue.serverTimestamp()
-                            });
-                        }
-                        await batch.commit();
-
+                        // BUG FIX (v3.1): Only mark pushed:true when at least one device
+                        // actually received the push. Previously, marking was unconditional —
+                        // if all subscriptions failed (missing keys, expired, etc.) the
+                        // notifications were permanently marked pushed:true and never retried.
                         if (sent > 0) {
+                            const batch = admin.firestore().batch();
+                            for (const notifDoc of docs) {
+                                batch.update(notifDoc.ref, {
+                                    pushed:     true,
+                                    pushSentAt: admin.firestore.FieldValue.serverTimestamp()
+                                });
+                            }
+                            await batch.commit();
                             console.log(`  [NOTIFS] ✔ [${tag}] Pushed & marked ${count} doc(s).`);
                         } else {
-                            console.log(`  [NOTIFS] ⚠️  [${tag}] 0 devices received push — marked anyway.`);
+                            console.log(`  [NOTIFS] ⚠️  [${tag}] 0 devices received push — NOT marking pushed:true, will retry next run.`);
                         }
                     }
                 }
