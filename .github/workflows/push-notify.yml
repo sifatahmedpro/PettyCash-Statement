@@ -1,62 +1,152 @@
 ## ============================================================
-## .github/workflows/push-notify.yml  —  v3.1
+## .github/workflows/push-notify.yml  —  v5.0
+## Web Push Notification Workflow
+## Project : অফিস ম্যানেজমেন্ট সিস্টেম
 ##
-## Runs every 60 minutes between 06:00–22:00 Dhaka time
-## (= 00:00–16:00 UTC). Resting hours are 23:00–06:00 Dhaka.
-## The Node.js script itself also has an hour-range guard so
-## accidental triggers outside hours are safe.
+## PURPOSE:
+##   Fires at 9 fixed Dhaka times per day to send scheduled
+##   module reminder push notifications to all subscribed users.
+##   Silent window: 23:00–06:00 Dhaka (no runs at all).
 ##
-## CHANGED in v3.1:
-##   - Interval changed from 30 min to 60 min
-##   - ~495 runs/month → well within 2,000 min free tier
+## SCHEDULE (Dhaka = UTC+6):
+##   Dhaka  06:00 → UTC 00:00 — advance-payment, manpower, policy-files
+##   Dhaka  08:00 → UTC 02:00 — fund-archive, hbl-recovery, vat-tax
+##   Dhaka  10:00 → UTC 04:00 — task-manager, office-issue, notesheet
+##   Dhaka  12:00 → UTC 06:00 — lunch-allowance, transport-bill, business-stats
+##   Dhaka  14:00 → UTC 08:00 — various-calculators, stationary-item, medical-bill
+##   Dhaka  16:00 → UTC 10:00 — ta-bill, license-forwarding, premium-submit
+##   Dhaka  18:00 → UTC 12:00 — personal-dues, personal-expense
+##   Dhaka  20:00 → UTC 14:00 — donation, help-requisition
+##   Dhaka  22:00 → UTC 16:00 — proposal-index, fpr-register, license-archive
 ##
-## HOW TO SET UP:
-##   1. Go to your GitHub repo → Settings → Secrets and variables → Actions
+## WHAT CHANGED in v5.0:
+##   - Manual trigger (workflow_dispatch) now runs ALL 9 slots in
+##     one go, so every module fires when you press "Run workflow".
+##     Previously it only ran the nearest earlier slot, causing
+##     most modules to appear broken during testing.
+##   - RESET_SEEN_TODAY is now auto-enabled for all manual and
+##     force_send runs. This clears the per-user "seen today"
+##     deduplication state so that modules already sent today
+##     are not silently skipped during re-runs or testing.
+##   - New workflow_dispatch input: reset_seen_today
+##     Can be set to true on cron runs too if needed.
+##   - send-push.js v5.0 required.
+##
+## MANUAL TRIGGER BEHAVIOUR (workflow_dispatch):
+##   Default (no inputs)    → runs ALL 9 slots, resets seen-today
+##   force_send=true        → runs nearest-earlier slot only,
+##                            resets seen-today
+##   dry_run=true           → shows what would be sent, no pushes
+##   reset_seen_today=true  → explicit state reset (also auto-set
+##                            for manual / force_send runs)
+##
+## TIME ZONE NOTE:
+##   Cron runs on UTC. Dhaka = UTC+6.
+##   GitHub Actions can delay up to ~10 min past the scheduled
+##   minute. send-push.js reads the actual Dhaka hour at runtime
+##   and is the authoritative source for which slot to run.
+##   The workflow cron just determines when the runner wakes up.
+##
+## SETUP INSTRUCTIONS:
+##   1. Go to GitHub repo → Settings → Secrets and variables → Actions
 ##   2. Add these Repository Secrets:
-##      - FIREBASE_PROJECT_ID
-##      - FIREBASE_CLIENT_EMAIL
-##      - FIREBASE_PRIVATE_KEY
-##      - VAPID_PUBLIC_KEY
-##      - VAPID_PRIVATE_KEY
-##      - VAPID_SUBJECT        (e.g. mailto:you@gmail.com)
+##      - FIREBASE_PROJECT_ID       (your Firebase project ID)
+##      - FIREBASE_CLIENT_EMAIL     (service account email)
+##      - FIREBASE_PRIVATE_KEY      (service account private key, paste as-is)
+##      - FIREBASE_API_KEY          (Firebase Web API key)
+##      - VAPID_PUBLIC_KEY          (Web Push VAPID public key)
+##      - VAPID_PRIVATE_KEY         (Web Push VAPID private key)
+##      - VAPID_SUBJECT             (mailto:your-email@example.com)
+##      - FAILURE_NOTIFY_EMAIL      (optional: where to send error emails)
+##      - SLACK_WEBHOOK_URL         (optional: Slack failure alerts)
+##      - MAIL_SERVER / MAIL_PORT / MAIL_USERNAME / MAIL_PASSWORD
+##                                  (optional: email failure alerts)
+##
+##   3. Place push-worker/send-push.js   (v5.0)
+##   4. Place push-worker/package.json   (firebase-admin + web-push)
+##   5. Run `npm install` locally → commit package-lock.json
+##   6. Push to GitHub — workflow activates automatically
+##
+## TESTING:
+##   - Manual trigger: Actions tab → "Web Push Notifications" → "Run workflow"
+##     (no inputs needed — fires all 9 slots automatically)
+##   - Use dry_run=true to verify routing without sending real pushes
+##   - Use force_send=true to test a single slot (nearest earlier)
+##   - Logs: Actions tab → select run → expand each step
+##
+## MONITORING:
+##   - Each run posts a summary to the Actions "Summary" tab
+##   - Failed runs show ❌ with full error output
+##   - Successful runs show ✅ with slot name + push count
 ## ============================================================
 
 name: Web Push Notifications
 
 on:
   schedule:
-    # Every 60 minutes from 00:00 UTC to 17:00 UTC
-    # = 06:00–23:00 Dhaka (UTC+6).
-    #
-    # FIX (Watch Point A): previous cron '0 0-16 * * *' last fired at
-    # 16:00 UTC = 22:00 Dhaka. GitHub Actions queuing delays often pushed
-    # the actual execution past 16:00 UTC, making the 22:00 Dhaka slot
-    # unreliable. Extending to 0-17 adds a 17:00 UTC = 23:00 Dhaka slot.
-    # The in-script guard (dhakaHour >= 23) in send-push.js remains the
-    # authoritative cutoff — the cron is just the outer scheduling envelope.
-    - cron: '0 0-17 * * *'  # 00:00–17:00 UTC = 06:00–23:00 Dhaka
+    ## 9 exact UTC hours = 9 Dhaka module slots (UTC+6):
+    ##   UTC 00 → Dhaka 06  advance-payment, manpower, policy-files
+    ##   UTC 02 → Dhaka 08  fund-archive, hbl-recovery, vat-tax
+    ##   UTC 04 → Dhaka 10  task-manager, office-issue, notesheet
+    ##   UTC 06 → Dhaka 12  lunch-allowance, transport-bill, business-stats
+    ##   UTC 08 → Dhaka 14  various-calculators, stationary-item, medical-bill
+    ##   UTC 10 → Dhaka 16  ta-bill, license-forwarding, premium-submit
+    ##   UTC 12 → Dhaka 18  personal-dues, personal-expense
+    ##   UTC 14 → Dhaka 20  donation, help-requisition
+    ##   UTC 16 → Dhaka 22  proposal-index, fpr-register, license-archive
+    - cron: '0 0,2,4,6,8,10,12,14,16 * * *'
 
-  # Run manually from the Actions tab for testing
+  ## Manual trigger from Actions tab for testing
   workflow_dispatch:
+    inputs:
+      force_send:
+        description: 'Force send a single slot (nearest earlier) instead of all slots'
+        required: false
+        default: 'false'
+      dry_run:
+        description: 'Dry run — show what would be sent without actually sending'
+        required: false
+        default: 'false'
+      reset_seen_today:
+        description: 'Clear seen-today state so already-sent modules fire again (auto-set for manual runs)'
+        required: false
+        default: 'true'
+
+concurrency:
+  group: push-notifications
+  cancel-in-progress: false  ## Never cancel a run mid-send
 
 jobs:
   send-push:
+    name: Send Module & Task Reminder Pushes
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
+      # ── Step 1: Checkout ──────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
+      # ── Step 2: Setup Node.js ─────────────────────────────────
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'push-worker/package-lock.json'
 
+      # ── Step 3: Install dependencies ──────────────────────────
       - name: Install dependencies
-        run: npm install
+        run: |
+          echo "📦 Installing dependencies..."
+          npm ci --prefer-offline --no-audit
         working-directory: push-worker
+        timeout-minutes: 5
 
-      - name: Send push notifications
+      # ── Step 4: Validate secrets ───────────────────────────────
+      - name: Validate configuration
         env:
           FIREBASE_PROJECT_ID:   ${{ secrets.FIREBASE_PROJECT_ID }}
           FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
@@ -65,5 +155,286 @@ jobs:
           VAPID_PUBLIC_KEY:      ${{ secrets.VAPID_PUBLIC_KEY }}
           VAPID_PRIVATE_KEY:     ${{ secrets.VAPID_PRIVATE_KEY }}
           VAPID_SUBJECT:         ${{ secrets.VAPID_SUBJECT }}
-        run: node send-push.js
+        run: |
+          echo "🔍 Validating secrets..."
+
+          required_secrets=(
+            "FIREBASE_PROJECT_ID"
+            "FIREBASE_CLIENT_EMAIL"
+            "FIREBASE_PRIVATE_KEY"
+            "FIREBASE_API_KEY"
+            "VAPID_PUBLIC_KEY"
+            "VAPID_PRIVATE_KEY"
+            "VAPID_SUBJECT"
+          )
+
+          missing_secrets=()
+
+          for secret in "${required_secrets[@]}"; do
+            var_value="${!secret}"
+            if [ -z "$var_value" ]; then
+              missing_secrets+=("$secret")
+              echo "❌ Missing: $secret"
+            else
+              echo "✅ Found:   $secret (${#var_value} chars)"
+            fi
+          done
+
+          if [ ${#missing_secrets[@]} -gt 0 ]; then
+            echo ""
+            echo "⚠️  The following required secrets are not set:"
+            for s in "${missing_secrets[@]}"; do
+              echo "   - $s"
+            done
+            echo ""
+            echo "Add them at: repo → Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+
+          echo ""
+          echo "✅ All required secrets are present."
+
+      # ── Step 5: Show current Dhaka time and active slot ───────
+      - name: Check Dhaka time and active slot
+        id: dhaka_time
+        run: |
+          utc_hour=$(date -u +%H | sed 's/^0//')   # strip leading zero → integer
+          dhaka_hour=$(( (utc_hour + 6) % 24 ))
+
+          ## Determine slot name for logging (mirrors HOUR_SCHEDULE in send-push.js)
+          case $dhaka_hour in
+            6)  slot_name="advance-payment · manpower · policy-files" ;;
+            8)  slot_name="fund-archive · hbl-recovery · vat-tax" ;;
+            10) slot_name="task-manager · office-issue · notesheet" ;;
+            12) slot_name="lunch-allowance · transport-bill · business-stats" ;;
+            14) slot_name="various-calculators · stationary-item · medical-bill" ;;
+            16) slot_name="ta-bill · license-forwarding · premium-submit" ;;
+            18) slot_name="personal-dues · personal-expense" ;;
+            20) slot_name="donation · help-requisition" ;;
+            22) slot_name="proposal-index · fpr-register · license-archive" ;;
+            *)  slot_name="(no scheduled slot — force_send or manual trigger required)" ;;
+          esac
+
+          ## Active = 06:00–23:00 Dhaka
+          if [ $dhaka_hour -ge 6 ] && [ $dhaka_hour -lt 23 ]; then
+            is_active="true"
+            status="🟢 Active"
+          else
+            is_active="false"
+            status="🔴 Resting (23:00–06:00 Dhaka)"
+          fi
+
+          echo "is_active=$is_active"   >> $GITHUB_OUTPUT
+          echo "dhaka_hour=$dhaka_hour" >> $GITHUB_OUTPUT
+          echo "slot_name=$slot_name"   >> $GITHUB_OUTPUT
+
+          echo "⏰ Time check:"
+          echo "   UTC hour:   $utc_hour"
+          echo "   Dhaka hour: $dhaka_hour"
+          echo "   Status:     $status"
+          echo "   Slot:       $slot_name"
+
+      # ── Step 6: Send push notifications ───────────────────────
+      - name: Send push notifications
+        id: push_worker
+        env:
+          FIREBASE_PROJECT_ID:   ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
+          FIREBASE_PRIVATE_KEY:  ${{ secrets.FIREBASE_PRIVATE_KEY }}
+          FIREBASE_API_KEY:      ${{ secrets.FIREBASE_API_KEY }}
+          VAPID_PUBLIC_KEY:      ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY:     ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_SUBJECT:         ${{ secrets.VAPID_SUBJECT }}
+          FORCE_SEND:            ${{ github.event.inputs.force_send }}
+          DRY_RUN:               ${{ github.event.inputs.dry_run }}
+          RESET_SEEN_TODAY:      ${{ github.event.inputs.reset_seen_today || 'false' }}
+          RUN_ID:                ${{ github.run_id }}
+          WORKFLOW_RUN_NUMBER:   ${{ github.run_number }}
+          GITHUB_ACTOR:          ${{ github.actor }}
+          IS_MANUAL_TRIGGER:     ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          echo "🚀 Starting push notification worker (v5.0)..."
+          echo ""
+          echo "Run information:"
+          echo "  Run ID:         $RUN_ID"
+          echo "  Run Number:     $WORKFLOW_RUN_NUMBER"
+          echo "  Triggered by:   $GITHUB_ACTOR"
+          echo "  Manual trigger: $IS_MANUAL_TRIGGER"
+          echo "  Force send:     $FORCE_SEND"
+          echo "  Dry run:        $DRY_RUN"
+          echo "  Slot:           ${{ steps.dhaka_time.outputs.slot_name }}"
+          echo ""
+
+          node send-push.js
+          exit_code=$?
+
+          echo ""
+          echo "Worker exit code: $exit_code"
+          echo "push_worker_exit_code=$exit_code" >> $GITHUB_OUTPUT
+
+          exit $exit_code
         working-directory: push-worker
+        timeout-minutes: 25
+        continue-on-error: true
+
+      # ── Step 7: Generate job summary ──────────────────────────
+      - name: Generate job summary
+        if: always()
+        run: |
+          utc_hour=$(date -u +%H | sed 's/^0//')
+          dhaka_hour=$(( (utc_hour + 6) % 24 ))
+
+          echo "# Web Push Notification Workflow — Summary"    >> $GITHUB_STEP_SUMMARY
+          echo ""                                               >> $GITHUB_STEP_SUMMARY
+
+          echo "## Run information"                            >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |"                             >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|"                                      >> $GITHUB_STEP_SUMMARY
+          echo "| Run ID | ${{ github.run_id }} |"             >> $GITHUB_STEP_SUMMARY
+          echo "| Run number | ${{ github.run_number }} |"     >> $GITHUB_STEP_SUMMARY
+          echo "| Trigger | ${{ github.event_name }} |"        >> $GITHUB_STEP_SUMMARY
+          echo "| Actor | ${{ github.actor }} |"               >> $GITHUB_STEP_SUMMARY
+          echo "| Timestamp | $(date -u +'%Y-%m-%d %H:%M UTC') |" >> $GITHUB_STEP_SUMMARY
+          echo "| Force send | ${{ github.event.inputs.force_send || 'false' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dry run | ${{ github.event.inputs.dry_run || 'false' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Reset seen-today | ${{ github.event.inputs.reset_seen_today || 'auto' }} |" >> $GITHUB_STEP_SUMMARY
+          echo ""                                               >> $GITHUB_STEP_SUMMARY
+
+          echo "## Time and slot"                              >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |"                             >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|"                                      >> $GITHUB_STEP_SUMMARY
+          echo "| UTC hour | $utc_hour |"                      >> $GITHUB_STEP_SUMMARY
+          echo "| Dhaka hour | $dhaka_hour |"                  >> $GITHUB_STEP_SUMMARY
+          echo "| Active slot | ${{ steps.dhaka_time.outputs.slot_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo ""                                               >> $GITHUB_STEP_SUMMARY
+
+          echo "## Schedule reference"                         >> $GITHUB_STEP_SUMMARY
+          echo "| Dhaka time | UTC cron | Modules |"           >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|---|"                                  >> $GITHUB_STEP_SUMMARY
+          echo "| 06:00 | 00:00 | advance-payment · manpower · policy-files |"            >> $GITHUB_STEP_SUMMARY
+          echo "| 08:00 | 02:00 | fund-archive · hbl-recovery · vat-tax |"                >> $GITHUB_STEP_SUMMARY
+          echo "| 10:00 | 04:00 | task-manager · office-issue · notesheet |"              >> $GITHUB_STEP_SUMMARY
+          echo "| 12:00 | 06:00 | lunch-allowance · transport-bill · business-stats |"    >> $GITHUB_STEP_SUMMARY
+          echo "| 14:00 | 08:00 | various-calculators · stationary-item · medical-bill |" >> $GITHUB_STEP_SUMMARY
+          echo "| 16:00 | 10:00 | ta-bill · license-forwarding · premium-submit |"        >> $GITHUB_STEP_SUMMARY
+          echo "| 18:00 | 12:00 | personal-dues · personal-expense |"                     >> $GITHUB_STEP_SUMMARY
+          echo "| 20:00 | 14:00 | donation · help-requisition |"                          >> $GITHUB_STEP_SUMMARY
+          echo "| 22:00 | 16:00 | proposal-index · fpr-register · license-archive |"      >> $GITHUB_STEP_SUMMARY
+          echo ""                                               >> $GITHUB_STEP_SUMMARY
+
+          echo "## Result"                                     >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.push_worker.outcome }}" == "success" ]; then
+            echo "**Status: ✅ Success**"                      >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Status: ❌ Failed — check logs above**"    >> $GITHUB_STEP_SUMMARY
+          fi
+
+      # ── Step 8: Upload logs artifact ──────────────────────────
+      - name: Upload workflow logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: push-notification-logs-${{ github.run_number }}
+          path: |
+            push-worker/logs/
+            push-worker/*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # ── Step 9: Notify Slack on failure (optional) ────────────
+      - name: Notify Slack on failure
+        if: failure() && github.event_name != 'workflow_dispatch'
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "❌ Web Push Notifications Failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*❌ Web Push Notifications Failed*\n\nRun #${{ github.run_number }}\nRepository: `${{ github.repository }}`\nSlot: `${{ steps.dhaka_time.outputs.slot_name }}`"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Triggered by:*\n${{ github.actor }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Event:*\n${{ github.event_name }}"
+                    }
+                  ]
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": { "type": "plain_text", "text": "View Logs" },
+                      "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL:  ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+        continue-on-error: true
+
+      # ── Step 10: Send email on failure (optional) ─────────────
+      - name: Send email notification on failure
+        if: failure() && secrets.FAILURE_NOTIFY_EMAIL != ''
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port:    ${{ secrets.MAIL_PORT }}
+          username:       ${{ secrets.MAIL_USERNAME }}
+          password:       ${{ secrets.MAIL_PASSWORD }}
+          subject:        '❌ Web Push Workflow Failed — Run #${{ github.run_number }} (${{ steps.dhaka_time.outputs.slot_name }})'
+          to:             ${{ secrets.FAILURE_NOTIFY_EMAIL }}
+          from:           'github-actions@officemanagement.app'
+          body: |
+            Web Push Notification workflow failed.
+
+            Run details:
+              Run Number  : ${{ github.run_number }}
+              Repository  : ${{ github.repository }}
+              Branch      : ${{ github.ref }}
+              Triggered by: ${{ github.actor }}
+              Event       : ${{ github.event_name }}
+              Slot        : ${{ steps.dhaka_time.outputs.slot_name }}
+              Timestamp   : $(date -u +'%Y-%m-%d %H:%M:%S UTC')
+
+            View full logs:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            ---
+            Automatic notification from GitHub Actions
+          content_type: text/plain
+        continue-on-error: true
+
+      # ── Step 11: Final status ──────────────────────────────────
+      - name: Final status check
+        if: always()
+        run: |
+          echo ""
+          echo "╔════════════════════════════════════════════╗"
+          echo "║   Web Push Notification Workflow — End    ║"
+          echo "╚════════════════════════════════════════════╝"
+          echo ""
+          echo "Slot: ${{ steps.dhaka_time.outputs.slot_name }}"
+          echo ""
+
+          if [ "${{ steps.push_worker.outcome }}" == "success" ]; then
+            echo "✅ Workflow completed successfully"
+            exit 0
+          else
+            echo "❌ Workflow failed — check logs above"
+            exit 1
+          fi
