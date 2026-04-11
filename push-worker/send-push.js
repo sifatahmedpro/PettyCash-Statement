@@ -571,7 +571,7 @@ async function checkSeenOrSnoozed(uid, statusKey) {
     try {
         const ref  = getDB().doc(`artifacts/default-app-id/users/${uid}/pushState/seenToday`);
         const snap = await ref.get();
-        if (!snap.exists()) return { skip: false };
+        if (!snap.exists) return { skip: false };
 
         const data  = snap.data();
         const today = getTodayDhaka();
@@ -600,7 +600,7 @@ async function markSeenToday(uid, statusKey) {
         const today = getTodayDhaka();
         const ref   = getDB().doc(`artifacts/default-app-id/users/${uid}/pushState/seenToday`);
         const snap  = await ref.get();
-        const data  = snap.exists() ? snap.data() : {};
+        const data  = snap.exists ? snap.data() : {};
 
         const existingDate = data.date || '';
         const keys         = existingDate === today ? (data.keys || []) : [];
