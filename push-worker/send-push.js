@@ -316,6 +316,15 @@ const HOUR_SCHEDULE = {
             countField: null,
         },
         {
+            tag:        'help',
+            icon:       '❓',
+            title:      'সহায়তা',
+            body:       'সহায়তা তালিকা পর্যালোচনা করুন।',
+            countLabel: 'টি আইটেম',
+            collection: 'help',
+            countField: null,
+        },
+        {
             tag:        'help-requisition',
             icon:       '📝',
             title:      'চাহিদা তালিকা ও ফিক্স নোট',
