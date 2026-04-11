@@ -2,12 +2,15 @@
 # .github/workflows/send-email.yml  —  v3.0 (SCHEDULED PER-PAGE)
 #
 # SCHEDULE (Dhaka UTC+6 → subtract 6 for UTC):
-#   10:00 AM Dhaka = 04:00 UTC  → Help (টাস্ক তালিকা)
-#   12:00 PM Dhaka = 06:00 UTC  → Office Issue Solution (সমস্যা ও সমাধান)
-#    2:00 PM Dhaka = 08:00 UTC  → Business Statistics (ব্যবসা পরিসংখ্যান)
-#    4:00 PM Dhaka = 10:00 UTC  → Premium Submit (প্রিমিয়াম জমা)
-#    6:00 PM Dhaka = 12:00 UTC  → Advance Payment (অগ্রিম পরিশোধ)
-#    8:00 PM Dhaka = 14:00 UTC  → Donation (অনুদান)
+#   Crons fire at :55 of the preceding UTC hour to beat GitHub's
+#   peak-congestion delay and arrive on time in Dhaka.
+#
+#    9:55 AM Dhaka = 03:55 UTC  → Help (টাস্ক তালিকা)        arrives ~10:00 AM
+#   11:55 AM Dhaka = 05:55 UTC  → Office Issue (সমস্যা ও সমাধান) arrives ~12:00 PM
+#    1:55 PM Dhaka = 07:55 UTC  → Business Stats (ব্যবসা পরিসংখ্যান) arrives ~2:00 PM
+#    3:55 PM Dhaka = 09:55 UTC  → Premium Submit (প্রিমিয়াম জমা) arrives ~4:00 PM
+#    5:55 PM Dhaka = 11:55 UTC  → Advance Payment (অগ্রিম পরিশোধ) arrives ~6:00 PM
+#    7:55 PM Dhaka = 13:55 UTC  → Donation (অনুদান)           arrives ~8:00 PM
 #
 #   SILENT HOURS: 10 PM – 10 AM Dhaka (no emails sent)
 #
@@ -28,12 +31,12 @@ name: Email Digest
 
 on:
   schedule:
-    - cron: '0 4 * * *'    # 10:00 AM Dhaka → Help
-    - cron: '0 6 * * *'    # 12:00 PM Dhaka → Office Issue Solution
-    - cron: '0 8 * * *'    #  2:00 PM Dhaka → Business Statistics
-    - cron: '0 10 * * *'   #  4:00 PM Dhaka → Premium Submit
-    - cron: '0 12 * * *'   #  6:00 PM Dhaka → Advance Payment
-    - cron: '0 14 * * *'   #  8:00 PM Dhaka → Donation
+    - cron: '55 3 * * *'   #  9:55 AM Dhaka  → Help            (arrives ~10:00 AM)
+    - cron: '55 5 * * *'   # 11:55 AM Dhaka  → Office Issue    (arrives ~12:00 PM)
+    - cron: '55 7 * * *'   #  1:55 PM Dhaka  → Business Stats  (arrives  ~2:00 PM)
+    - cron: '55 9 * * *'   #  3:55 PM Dhaka  → Premium Submit  (arrives  ~4:00 PM)
+    - cron: '55 11 * * *'  #  5:55 PM Dhaka  → Advance Payment (arrives  ~6:00 PM)
+    - cron: '55 13 * * *'  #  7:55 PM Dhaka  → Donation        (arrives  ~8:00 PM)
 
   # Run manually from the Actions tab for testing
   workflow_dispatch:
