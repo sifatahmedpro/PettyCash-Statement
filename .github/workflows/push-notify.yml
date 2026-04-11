@@ -16,7 +16,7 @@
 ##   Dhaka  14:00 → UTC 08:00 — various-calculators, stationary-item, medical-bill
 ##   Dhaka  16:00 → UTC 10:00 — ta-bill, license-forwarding, premium-submit
 ##   Dhaka  18:00 → UTC 12:00 — personal-dues, personal-expense
-##   Dhaka  20:00 → UTC 14:00 — donation, help-requisition
+##   Dhaka  20:00 → UTC 14:00 — donation, help, help-requisition
 ##   Dhaka  22:00 → UTC 16:00 — proposal-index, fpr-register, license-archive
 ##
 ## WHAT CHANGED in v5.0:
@@ -92,7 +92,7 @@ on:
     ##   UTC 08 → Dhaka 14  various-calculators, stationary-item, medical-bill
     ##   UTC 10 → Dhaka 16  ta-bill, license-forwarding, premium-submit
     ##   UTC 12 → Dhaka 18  personal-dues, personal-expense
-    ##   UTC 14 → Dhaka 20  donation, help-requisition
+    ##   UTC 14 → Dhaka 20  donation, help, help-requisition
     ##   UTC 16 → Dhaka 22  proposal-index, fpr-register, license-archive
     - cron: '0 0,2,4,6,8,10,12,14,16 * * *'
 
@@ -210,7 +210,7 @@ jobs:
             14) slot_name="various-calculators · stationary-item · medical-bill" ;;
             16) slot_name="ta-bill · license-forwarding · premium-submit" ;;
             18) slot_name="personal-dues · personal-expense" ;;
-            20) slot_name="donation · help-requisition" ;;
+            20) slot_name="donation · help · help-requisition" ;;
             22) slot_name="proposal-index · fpr-register · license-archive" ;;
             *)  slot_name="(no scheduled slot — force_send or manual trigger required)" ;;
           esac
@@ -318,7 +318,7 @@ jobs:
           echo "| 14:00 | 08:00 | various-calculators · stationary-item · medical-bill |" >> $GITHUB_STEP_SUMMARY
           echo "| 16:00 | 10:00 | ta-bill · license-forwarding · premium-submit |"        >> $GITHUB_STEP_SUMMARY
           echo "| 18:00 | 12:00 | personal-dues · personal-expense |"                     >> $GITHUB_STEP_SUMMARY
-          echo "| 20:00 | 14:00 | donation · help-requisition |"                          >> $GITHUB_STEP_SUMMARY
+          echo "| 20:00 | 14:00 | donation · help · help-requisition |"                       >> $GITHUB_STEP_SUMMARY
           echo "| 22:00 | 16:00 | proposal-index · fpr-register · license-archive |"      >> $GITHUB_STEP_SUMMARY
           echo ""                                               >> $GITHUB_STEP_SUMMARY
 
