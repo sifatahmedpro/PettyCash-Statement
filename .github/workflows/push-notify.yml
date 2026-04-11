@@ -134,14 +134,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: 'push-worker/package-lock.json'
+          # No npm cache — avoids failure when package-lock.json path can't be resolved
 
       # ── Step 3: Install dependencies ──────────────────────────
       - name: Install dependencies
         run: |
           echo "📦 Installing dependencies..."
-          npm ci --prefer-offline --no-audit
+          npm install --no-audit --prefer-offline || npm install --no-audit
         working-directory: push-worker
         timeout-minutes: 5
 
@@ -397,7 +396,7 @@ jobs:
           username:       ${{ secrets.MAIL_USERNAME }}
           password:       ${{ secrets.MAIL_PASSWORD }}
           subject:        '❌ Web Push Workflow Failed — Run #${{ github.run_number }} (${{ steps.dhaka_time.outputs.slot_name }})'
-          to:             ${{ secrets.FAILURE_NOTIFY_EMAIL }}
+          to:             ${{ secrets.FAILURE_NOTIFY_EMAIL || 'noreply@example.com' }}
           from:           'github-actions@officemanagement.app'
           body: |
             Web Push Notification workflow failed.
@@ -416,7 +415,6 @@ jobs:
 
             ---
             Automatic notification from GitHub Actions
-          content_type: text/plain
         continue-on-error: true
 
       # ── Step 11: Final status ──────────────────────────────────
