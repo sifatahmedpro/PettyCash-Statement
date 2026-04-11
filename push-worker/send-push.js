@@ -869,7 +869,31 @@ async function getUserSubscriptions(uid) {
         const snap = await getDB()
             .collection(`artifacts/default-app-id/users/${uid}/pushSubscriptions`)
             .get();
-        return snap.docs.map(d => d.data()).filter(s => s.endpoint && s.keys);
+
+        const all   = snap.docs.map(d => ({ _docId: d.id, ...d.data() }));
+        const valid = [];
+
+        for (const s of all) {
+            if (!s.endpoint) {
+                logger.warn('Subscription missing endpoint — skipping', { uid, docId: s._docId });
+                continue;
+            }
+            // FIX: Previously `!s.keys` silently dropped subscriptions where the
+            // keys field was missing (e.g. docs saved before the JSON-serialise fix),
+            // causing ALL pushes to fail silently for that user.
+            // Now we log the problem and still attempt delivery — web-push will
+            // surface a clear error if keys are genuinely malformed.
+            if (!s.keys) {
+                logger.warn('Subscription missing keys field — attempting delivery anyway', {
+                    uid, docId: s._docId, endpoint: s.endpoint.slice(0, 40)
+                });
+            }
+            const { _docId, ...subData } = s;
+            valid.push(subData);
+        }
+
+        logger.debug(`getUserSubscriptions: ${all.length} docs, ${valid.length} usable`, { uid });
+        return valid;
     } catch (err) {
         logger.warn('getUserSubscriptions failed', { uid, error: err.message });
         return [];
