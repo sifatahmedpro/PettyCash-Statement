@@ -389,7 +389,7 @@ jobs:
 
       # ── Step 10: Send email on failure (optional) ─────────────
       - name: Send email notification on failure
-        if: failure() && secrets.FAILURE_NOTIFY_EMAIL != ''
+        if: failure()
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: ${{ secrets.MAIL_SERVER }}
