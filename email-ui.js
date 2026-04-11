@@ -46,13 +46,14 @@ function _waitFor(getter, label, timeoutMs = 10000) {
 
 /* ── Page definitions (mirrors send-email.js) ──────────────── */
 
+// Schedule: 10PM–10AM Dhaka = silent. 10AM–10PM = one email per 2hr slot.
 const PAGE_DEFS = [
-    { key: 'advance_payment', label: 'অগ্রিম পরিশোধ',    icon: '💵', color: '#0f766e' },
-    { key: 'business_stats',  label: 'ব্যবসা পরিসংখ্যান', icon: '📊', color: '#251577' },
-    { key: 'donation',        label: 'অনুদান',             icon: '🤝', color: '#7c3aed' },
-    { key: 'help',            label: 'সহায়তা',             icon: '📋', color: '#b45309' },
-    { key: 'office_issue',    label: 'সমস্যা ও সমাধান',   icon: '⚠️',  color: '#dc2626' },
-    { key: 'premium_submit',  label: 'প্রিমিয়াম জমা',    icon: '🏦',  color: '#0369a1' },
+    { key: 'help',            label: 'সহায়তা',             icon: '📋', color: '#b45309', time: 'সকাল ১০টা'  },
+    { key: 'office_issue',    label: 'সমস্যা ও সমাধান',   icon: '⚠️',  color: '#dc2626', time: 'দুপুর ১২টা' },
+    { key: 'business_stats',  label: 'ব্যবসা পরিসংখ্যান', icon: '📊', color: '#251577', time: 'বিকাল ২টা'  },
+    { key: 'premium_submit',  label: 'প্রিমিয়াম জমা',    icon: '🏦',  color: '#0369a1', time: 'বিকাল ৪টা'  },
+    { key: 'advance_payment', label: 'অগ্রিম পরিশোধ',    icon: '💵', color: '#0f766e', time: 'সন্ধ্যা ৬টা' },
+    { key: 'donation',        label: 'অনুদান',             icon: '🤝', color: '#7c3aed', time: 'রাত ৮টা'    },
 ];
 
 /* ── CSS injection ─────────────────────────────────────────── */
@@ -429,9 +430,6 @@ function _makeToggle({ id, icon, label, checked, iconBg = 'rgba(37,21,119,.08)' 
 function _render(container, { title, sub, isSubscribed, email, prefs }) {
     const pagePrefs = prefs.pages || {};
 
-    const slotPillMorning = `<span class="en3-slot-pill ${prefs.morning ? 'enabled' : ''}">🌅 সকাল ৮টা</span>`;
-    const slotPillEvening = `<span class="en3-slot-pill ${prefs.evening ? 'enabled' : ''}">🌆 সন্ধ্যা ৮টা</span>`;
-
     const activePagesCount = PAGE_DEFS.filter(p => pagePrefs[p.key] !== false).length;
 
     container.innerHTML = `
@@ -446,7 +444,7 @@ function _render(container, { title, sub, isSubscribed, email, prefs }) {
                     <div class="en3-icon-circle">📧</div>
                     <div>
                         <h3>${title}</h3>
-                        <p>${sub || 'স্বয়ংক্রিয় ইমেইল ডাইজেস্ট পরিষেবা'}</p>
+                        <p>${sub || 'স্বয়ংক্রিয় ইমেইল — প্রতিদিন ১০টা–৮টা'}</p>
                     </div>
                 </div>
                 <span class="en3-status-badge ${isSubscribed ? 'active' : 'inactive'}">
@@ -455,8 +453,7 @@ function _render(container, { title, sub, isSubscribed, email, prefs }) {
             </div>
             ${isSubscribed ? `
             <div class="en3-slot-pills">
-                ${slotPillMorning}
-                ${slotPillEvening}
+                <span class="en3-slot-pill enabled">⏰ ১০AM–৮PM</span>
                 <span class="en3-slot-pill enabled">📌 ${activePagesCount}/৬ পেজ</span>
             </div>` : ''}
         </div>
@@ -465,30 +462,33 @@ function _render(container, { title, sub, isSubscribed, email, prefs }) {
     <!-- Body -->
     <div class="en3-body">
 
-        <!-- Digest time slots -->
+        <!-- Schedule info -->
         <div class="en3-section-head">
             <div class="en3-section-head-line"></div>
-            <span>ডাইজেস্ট সময়</span>
+            <span>ইমেইল সময়সূচি (১০PM–১০AM নিরব)</span>
         </div>
 
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-            ${_makeToggle({ id: 'en3-morning', icon: '🌅', label: 'সকাল ৮টায় ডাইজেস্ট', checked: prefs.morning })}
-            ${_makeToggle({ id: 'en3-evening', icon: '🌆', label: 'সন্ধ্যা ৮টায় ডাইজেস্ট', checked: prefs.evening })}
-        </div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:4px;font-size:.8rem;font-family:'SolaimanLipi','Kalpurush',sans-serif">
+            ${PAGE_DEFS.map(p => `
+            <tr style="border-bottom:1px solid #ebebfc">
+              <td style="padding:5px 8px;color:#251577;font-weight:700">${p.icon} ${p.label}</td>
+              <td style="padding:5px 8px;color:#6b7280;text-align:right">⏰ ${p.time}</td>
+            </tr>`).join('')}
+        </table>
 
         <hr class="en3-divider">
 
         <!-- Per-page toggles -->
         <div class="en3-section-head">
             <div class="en3-section-head-line"></div>
-            <span>পেজ ভিত্তিক ইমেইল</span>
+            <span>পেজ ভিত্তিক ইমেইল চালু/বন্ধ</span>
         </div>
 
         <div class="en3-pages-grid">
             ${PAGE_DEFS.map(p => _makeToggle({
                 id:    `en3-page-${p.key}`,
                 icon:  p.icon,
-                label: p.label,
+                label: p.label + ' (' + p.time + ')',
                 checked: pagePrefs[p.key] !== false,
                 iconBg: p.color + '18',
             })).join('')}
@@ -526,12 +526,7 @@ function _render(container, { title, sub, isSubscribed, email, prefs }) {
     </div>
 </div>`;
 
-    // Fix: slot toggles need separate wrappers (not inside a flex row together)
-    // Re-render the slot section properly — remove the flex wrapper added above
-    const slotGrid = container.querySelector('.en3-body > div[style*="flex"]');
-    if (slotGrid) {
-        slotGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:5px';
-    }
+    // (no post-render fixup needed)
 }
 
 /* ── Toast helper ────────────────────────────────────────────── */
@@ -561,9 +556,6 @@ function _wireEvents(container, uid, currentEmail) {
                 return;
             }
 
-            const morningEl = container.querySelector('#en3-morning');
-            const eveningEl = container.querySelector('#en3-evening');
-
             const pages = {};
             PAGE_DEFS.forEach(p => {
                 const el = container.querySelector(`#en3-page-${p.key}`);
@@ -571,8 +563,8 @@ function _wireEvents(container, uid, currentEmail) {
             });
 
             const prefs = {
-                morning: morningEl ? morningEl.checked : true,
-                evening: eveningEl ? eveningEl.checked : true,
+                morning: true,  // legacy — kept for backward compat
+                evening: true,  // legacy — kept for backward compat
                 tasks:   true,  // legacy key
                 pages:   pages
             };
