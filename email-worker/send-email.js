@@ -1,20 +1,34 @@
 /**
  * ============================================================
- * email-worker/send-email.js  —  v4.0 (FULL LIST STATUS EMAILS)
+ * email-worker/send-email.js  —  v5.0 (SINGLE-PAGE-PER-RUN)
  *
- * WHAT CHANGED vs v2:
- *   Complete visual redesign of all 6 email templates:
- *   - Brand colour #251577 used throughout
- *   - SolaimanLipi / Kalpurush Bengali fonts declared
- *   - Rich header with logo bar, title, office & date strip
- *   - Summary stat cards (total records / amount at a glance)
- *   - Zebra-stripe data tables with column headers in brand blue
- *   - Status badges (priority, payment type, issue status)
- *   - Motivational footer with quick-tips section
- *   - Responsive layout (600 px max on desktop, 100% on mobile)
+ * WHAT CHANGED vs v4:
+ *   1. SINGLE PAGE PER RUN — reads TARGET_PAGE env variable set
+ *      by the GitHub Actions workflow step. Each cron job sends
+ *      exactly one page email instead of all six.
  *
- * All data fetching, Firestore paths, GitHub Actions wiring,
- * page definitions and send logic are UNCHANGED from v2.
+ *   2. CORRECT FIRESTORE PATHS — all 6 fetchers now use the
+ *      exact collection names the app modules write to:
+ *        advance_payments        (was: payments)
+ *        donations               (correct)
+ *        tasks                   (correct)
+ *        office_issues           (was: issues)
+ *        business_analysis_archives (was: businessStats)
+ *        accounts_1st_year / accounts_renewal / accounts_deferred
+ *        accounts_mr / accounts_loan (was: premiumStatements)
+ *
+ *   3. CORRECT FIELD NAMES — business stats uses meta.reportDate,
+ *      meta.inchargeName, meta.total15DaysBusiness. Premium uses
+ *      amount / deposit / balance / slipNo / date / type.
+ *
+ *   4. SCHEDULE (Dhaka, UTC+6):
+ *        10 AM → help
+ *        12 PM → office_issue
+ *         2 PM → business_stats
+ *         4 PM → premium_submit
+ *         6 PM → advance_payment
+ *         8 PM → donation
+ *      Silent from 10 PM – 10 AM Dhaka.
  * ============================================================
  */
 
@@ -83,19 +97,49 @@ function getBengaliDateLabel() {
     return `${days[d.getUTCDay()]}, ${toBn(d.getUTCDate())} ${months[d.getUTCMonth()]} ${toBn(d.getUTCFullYear())}`;
 }
 
-function getDigestSlot() {
-    return getDhakaDate().getUTCHours() < 14 ? 'morning' : 'evening';
+/**
+ * Resolve which page to send.
+ *  - Reads TARGET_PAGE env var (set by workflow step).
+ *  - Falls back to deriving from Dhaka hour if not set.
+ *  - Returns null if current Dhaka time is in the silent window (10 PM – 10 AM).
+ */
+function getTargetPage() {
+    if (process.env.TARGET_PAGE) {
+        return process.env.TARGET_PAGE.trim();
+    }
+    // Fallback: derive from current Dhaka hour (10 PM–10 AM is silent window)
+    // getDhakaDate() returns a Date shifted by +6 h, so getUTCHours() gives
+    // the true Dhaka local hour (0–23).
+    const dhakaHour = getDhakaDate().getUTCHours();
+    // Silent window: before 10 AM or at/after 22:00 (10 PM) Dhaka → return null
+    if (dhakaHour < 10 || dhakaHour >= 22) return null;
+    // Map Dhaka hour → page key
+    const map = {
+        10: 'help',            // 10:00 AM Dhaka
+        12: 'office_issue',    // 12:00 PM Dhaka
+        14: 'business_stats',  //  2:00 PM Dhaka
+        16: 'premium_submit',  //  4:00 PM Dhaka
+        18: 'advance_payment', //  6:00 PM Dhaka
+        20: 'donation'         //  8:00 PM Dhaka
+    };
+    return map[dhakaHour] || null;
 }
 
-// ── 4. Firestore data fetchers (v4 — full list, active + archived) ──
+// ── 4. Firestore base path helper ────────────────────────────
 
 const BASE = (uid) =>
     db.collection('artifacts').doc('default-app-id').collection('users').doc(uid);
 
-// Returns { active: [], archived: [], totalActive, totalArchived, grandTotal }
+// ── 5. Firestore data fetchers ────────────────────────────────
+// Each fetcher uses the EXACT collection names written by the app.
+
+/**
+ * advance_payments collection
+ * Fields: code, name, branch, type, description, amount, date, isArchived
+ */
 async function fetchAdvancePayments(uid) {
-    const snap = await BASE(uid).collection('payments')
-        .orderBy('date', 'desc').get();
+    const snap = await BASE(uid).collection('advance_payments')
+        .orderBy('timestamp', 'desc').get();
     const active = [], archived = [];
     snap.forEach(d => {
         const data = d.data();
@@ -105,50 +149,52 @@ async function fetchAdvancePayments(uid) {
             branch:      data.branch      || '—',
             type:        data.type        || '—',
             description: data.description || '—',
-            amount:      data.amount != null ? data.amount : 0,
+            amount:      data.amount != null ? Number(data.amount) : 0,
             date:        data.date        || '—'
         };
         if (data.isArchived) archived.push(row);
         else                 active.push(row);
     });
-    const totalActive   = active.reduce((s, r) => s + (Number(r.amount) || 0), 0);
-    const totalArchived = archived.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+    const totalActive   = active.reduce((s, r) => s + r.amount, 0);
+    const totalArchived = archived.reduce((s, r) => s + r.amount, 0);
     return { active, archived, totalActive, totalArchived,
              grandTotal: totalActive + totalArchived };
 }
 
-// Returns { rows: [], total }
+/**
+ * business_analysis_archives collection
+ * Fields stored under meta: reportDate, inchargeName, total15DaysBusiness, createdAt
+ */
 async function fetchBusinessStats(uid) {
-    const rows = [];
-    const snap = await BASE(uid).collection('businessStats').get();
-    snap.forEach(d => {
-        if (d.id === 'archive') return;
-        const data = d.data();
-        rows.push({ date: data.reportDate || data.date || '—',
-                    incharge: data.inchargeName || '—',
-                    business: data.businessYear || '—',
-                    amount: data.businessAmount != null ? data.businessAmount : 0 });
-    });
+    let rows = [];
     try {
-        const archSnap = await BASE(uid).collection('businessStats')
-            .doc('archive').collection('reports').orderBy('reportDate', 'desc').get();
-        archSnap.forEach(d => {
+        const snap = await BASE(uid).collection('business_analysis_archives')
+            .orderBy('meta.createdAt', 'desc').get();
+        snap.forEach(d => {
             const data = d.data();
-            rows.push({ date: data.reportDate || '—',
-                        incharge: data.inchargeName || '—',
-                        business: data.businessYear || '—',
-                        amount: data.businessAmount != null ? data.businessAmount : 0 });
+            const meta = data.meta || {};
+            rows.push({
+                date:      meta.reportDate          || '—',
+                incharge:  meta.inchargeName        || '—',
+                business:  meta.total15DaysBusiness != null
+                               ? Number(meta.total15DaysBusiness) : 0,
+                createdBy: meta.createdBy           || '—'
+            });
         });
-    } catch (_) {}
-    rows.sort((a, b) => (b.date > a.date ? 1 : -1));
-    const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+    } catch (e) {
+        console.warn('  ⚠️ business_analysis_archives fetch error:', e.message);
+    }
+    const total = rows.reduce((s, r) => s + (Number(r.business) || 0), 0);
     return { rows, total };
 }
 
-// Returns { active: [], archived: [], totalActive, totalArchived }
+/**
+ * donations collection
+ * Fields: code, name, branch, type, amount, date, isArchived
+ */
 async function fetchDonations(uid) {
     const snap = await BASE(uid).collection('donations')
-        .orderBy('date', 'desc').get();
+        .orderBy('timestamp', 'desc').get();
     const active = [], archived = [];
     snap.forEach(d => {
         const data = d.data();
@@ -157,18 +203,21 @@ async function fetchDonations(uid) {
             name:   data.name   || '—',
             branch: data.branch || '—',
             type:   data.type   || '—',
-            amount: data.amount != null ? data.amount : 0,
+            amount: data.amount != null ? Number(data.amount) : 0,
             date:   data.date   || '—'
         };
         if (data.isArchived) archived.push(row);
         else                 active.push(row);
     });
-    const totalActive   = active.reduce((s, r) => s + (Number(r.amount) || 0), 0);
-    const totalArchived = archived.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+    const totalActive   = active.reduce((s, r) => s + r.amount, 0);
+    const totalArchived = archived.reduce((s, r) => s + r.amount, 0);
     return { active, archived, totalActive, totalArchived };
 }
 
-// Returns { pending: [], done: [] } — all tasks
+/**
+ * tasks collection
+ * Fields: title, date (Timestamp or string), status ('done' | 'pending')
+ */
 async function fetchAllTasks(uid) {
     const snap = await BASE(uid).collection('tasks')
         .orderBy('date', 'asc').get();
@@ -186,122 +235,104 @@ async function fetchAllTasks(uid) {
                 dateStr = String(data.date).split('T')[0];
             }
         }
-        const row = { title: data.title || 'শিরোনামহীন', date: dateStr,
-                      status: data.status || 'pending' };
+        const row = { title: data.title || 'শিরোনামহীন', date: dateStr };
         if (data.status === 'done') done.push(row);
         else                        pending.push(row);
     });
     return { pending, done };
 }
 
-// Returns { pending: [], resolved: [] }
+/**
+ * office_issues collection
+ * Fields: date, description, priority, status ('pending' | 'resolved')
+ */
 async function fetchIssues(uid) {
-    const snap = await BASE(uid).collection('issues')
-        .orderBy('date', 'desc').get();
+    const snap = await BASE(uid).collection('office_issues')
+        .orderBy('timestamp', 'desc').get();
     const pending = [], resolved = [];
     snap.forEach(d => {
         const data = d.data();
         const row = {
             date:        data.date        || '—',
             description: (data.description || '—').slice(0, 80),
-            priority:    data.priority    || '—',
+            priority:    data.priority    || 'medium',
             status:      data.status      || 'pending'
         };
-        if (data.status === 'pending') pending.push(row);
-        else                           resolved.push(row);
+        if (data.status === 'resolved') resolved.push(row);
+        else                            pending.push(row);
     });
     return { pending, resolved };
 }
 
-// Returns { rows: [], totalDeposit, totalBalance }
+/**
+ * accounts_1st_year / accounts_renewal / accounts_deferred / accounts_mr / accounts_loan
+ * Fields: type, slipNo, amount, deposit, balance, date, timestamp
+ */
 async function fetchPremiumStatements(uid) {
-    const types = ['1st_year', 'renewal', 'deferred', 'mr', 'loan'];
-    const typeLabels = { '1st_year': '১ম বর্ষ', renewal: 'নবায়ন',
-                         deferred: 'ডেফার্ড', mr: 'এম আর', loan: 'ঋণ' };
+    const TABS = ['1st_year', 'renewal', 'deferred', 'mr', 'loan'];
+    const TYPE_DISPLAY = {
+        '1st_year': '১ম বর্ষ', renewal: 'নবায়ন',
+        deferred: 'ডেফার্ড', mr: 'এম আর', loan: 'ঋণ'
+    };
     const rows = [];
-    for (const type of types) {
+    for (const tab of TABS) {
         try {
-            const snap = await BASE(uid).collection('premiumStatements')
-                .where('type', '==', type).orderBy('date', 'desc').get();
+            const snap = await BASE(uid).collection(`accounts_${tab}`)
+                .orderBy('timestamp', 'desc').get();
             snap.forEach(d => {
                 const data = d.data();
                 rows.push({
-                    type:    typeLabels[type] || type,
+                    type:    TYPE_DISPLAY[tab] || tab,
                     slipNo:  data.slipNo  || '—',
-                    amount:  data.amount  != null ? data.amount  : 0,
-                    deposit: data.deposit != null ? data.deposit : 0,
-                    balance: data.balance != null ? data.balance : 0,
+                    amount:  data.amount  != null ? Number(data.amount)  : 0,
+                    deposit: data.deposit != null ? Number(data.deposit) : 0,
+                    balance: data.balance != null ? Number(data.balance) : 0,
                     date:    data.date    || '—'
                 });
             });
-        } catch (_) {}
+        } catch (e) {
+            console.warn(`  ⚠️ accounts_${tab} fetch error:`, e.message);
+        }
     }
+    // Sort newest first by date string
     rows.sort((a, b) => (b.date > a.date ? 1 : -1));
-    const totalDeposit = rows.reduce((s, r) => s + (Number(r.deposit) || 0), 0);
-    const totalBalance = rows.reduce((s, r) => s + (Number(r.balance) || 0), 0);
+    const totalDeposit = rows.reduce((s, r) => s + r.deposit, 0);
+    const totalBalance = rows.reduce((s, r) => s + r.balance, 0);
     return { rows, totalDeposit, totalBalance };
 }
 
-// ── 5. Professional Email HTML builders ──────────────────────
+// ── 6. Email template helpers ─────────────────────────────────
 
-/**
- * Google Fonts CDN link for SolaimanLipi-compatible Bengali web font.
- * Since SolaimanLipi is a desktop font, we use Noto Sans Bengali as
- * the closest available web font for email, with SolaimanLipi as
- * the first-choice local fallback.
- */
 const FONT_IMPORT = `<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;600;700&display=swap" rel="stylesheet">`;
+const FONT_STACK  = `'SolaimanLipi', 'Kalpurush', 'Noto Sans Bengali', 'Arial Unicode MS', sans-serif`;
 
-const FONT_STACK = `'SolaimanLipi', 'Kalpurush', 'Noto Sans Bengali', 'Arial Unicode MS', sans-serif`;
-
-/** Number formatting with Bengali digits */
 function toBnNum(n) {
     return String(n).replace(/\d/g, ch => '০১২৩৪৫৬৭৮৯'[+ch]);
 }
 
-/** Format taka amounts nicely */
 function formatTaka(val) {
     if (val === '—' || val === null || val === undefined) return '—';
     const num = Number(val);
-    if (isNaN(num)) return val;
+    if (isNaN(num)) return String(val);
     return '৳\u202f' + num.toLocaleString('bn-BD');
 }
 
-/** Priority badge HTML */
 function priorityBadge(priority) {
     const map = {
         high:   { bg: '#fee2e2', color: '#dc2626', border: '#fca5a5', label: 'উচ্চ' },
         medium: { bg: '#fef3c7', color: '#d97706', border: '#fcd34d', label: 'সাধারণ' },
         low:    { bg: '#dcfce7', color: '#16a34a', border: '#86efac', label: 'কম' },
     };
-    const s = map[priority] || { bg: '#f3f4f6', color: '#6b7280', border: '#d1d5db', label: priority };
+    const s = map[priority] || map.medium;
     return `<span style="display:inline-block;padding:2px 9px;border-radius:20px;font-size:.75rem;font-weight:700;background:${s.bg};color:${s.color};border:1px solid ${s.border}">${s.label}</span>`;
 }
 
-/** Type / category badge */
 function typeBadge(label, accent = '#251577') {
     return `<span style="display:inline-block;padding:2px 9px;border-radius:20px;font-size:.75rem;font-weight:600;background:#eef0fc;color:${accent};border:1px solid #c7cef5">${label}</span>`;
 }
 
-/**
- * Shared professional email shell.
- *
- * @param {object} opts
- *   headerAccent  — left side of header gradient (defaults to brand blue)
- *   headerAccent2 — right side
- *   icon          — emoji icon string
- *   title         — module title
- *   subtitle      — small tagline under the title
- *   dateLabel     — Bengali date string
- *   slot          — 'morning' | 'evening'
- *   officeName    — string or null
- *   bodyHTML      — inner body HTML
- *   statCards     — optional array of {icon, label, value} summary cards
- */
 function emailShell({ headerAccent = '#251577', headerAccent2 = '#3730a3', icon, title,
-                       subtitle = '', dateLabel, slot, officeName, bodyHTML, statCards = [] }) {
-
-    const slotLabel = slot === 'morning' ? '🌅 সকালের ডাইজেস্ট' : '🌆 সন্ধ্যার ডাইজেস্ট';
+                       subtitle = '', dateLabel, timeSlot, officeName, bodyHTML, statCards = [] }) {
 
     const statCardsHTML = statCards.length ? `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px">
@@ -322,47 +353,38 @@ function emailShell({ headerAccent = '#251577', headerAccent2 = '#3730a3', icon,
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="light">
 ${FONT_IMPORT}
 <title>${title}</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;600;700&display=swap');
   * { box-sizing: border-box; }
   body { margin: 0; padding: 0; background: #eef0f8; }
   @media (max-width: 620px) {
     .email-wrapper { margin: 0 !important; border-radius: 0 !important; }
     .email-pad     { padding: 20px 16px !important; }
-    .stat-td       { display: block !important; width: 100% !important; padding: 0 0 8px !important; }
     .data-table td, .data-table th { padding: 8px 6px !important; font-size: .78rem !important; }
   }
 </style>
 </head>
 <body style="margin:0;padding:0;background:#eef0f8;font-family:${FONT_STACK}">
 
-<!-- Outer wrapper -->
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
 <tr><td align="center" style="padding:28px 12px 40px">
 
-<!-- Email card -->
 <table role="presentation" class="email-wrapper" width="600" cellpadding="0" cellspacing="0"
        style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;
-              box-shadow:0 8px 32px rgba(37,21,119,.13),0 2px 8px rgba(0,0,0,.06)">
+              box-shadow:0 8px 32px rgba(37,21,119,.13)">
 
-  <!-- ═══ HEADER ═══ -->
+  <!-- HEADER -->
   <tr>
     <td style="background:linear-gradient(135deg,${headerAccent} 0%,${headerAccent2} 100%);padding:0">
-
-      <!-- Top accent bar -->
       <div style="height:4px;background:linear-gradient(90deg,#FFC400,#FFE066,#FFC400)"></div>
-
-      <!-- Logo + Office row -->
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
         <tr>
           <td style="padding:18px 28px 10px">
             <table role="presentation" cellpadding="0" cellspacing="0">
               <tr>
                 <td style="background:rgba(255,255,255,.18);border-radius:10px;padding:6px 14px">
-                  <span style="color:#ffffff;font-size:.8rem;font-weight:700;letter-spacing:.04em;font-family:${FONT_STACK}">
+                  <span style="color:#ffffff;font-size:.8rem;font-weight:700;font-family:${FONT_STACK}">
                     🏢 অফিস ম্যানেজমেন্ট সিস্টেম
                   </span>
                 </td>
@@ -374,39 +396,30 @@ ${FONT_IMPORT}
           </td>
         </tr>
       </table>
-
-      <!-- Central icon + title -->
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
         <tr>
           <td align="center" style="padding:10px 28px 20px">
             <div style="width:64px;height:64px;background:rgba(255,255,255,.2);border-radius:50%;
                         display:inline-flex;align-items:center;justify-content:center;
                         font-size:2rem;line-height:64px;margin-bottom:12px">${icon}</div>
-            <h1 style="margin:0 0 6px;color:#ffffff;font-size:1.45rem;font-weight:700;
-                       letter-spacing:.01em;font-family:${FONT_STACK}">${title}</h1>
+            <h1 style="margin:0 0 6px;color:#ffffff;font-size:1.45rem;font-weight:700;font-family:${FONT_STACK}">${title}</h1>
             ${subtitle ? `<p style="margin:0 0 8px;color:rgba(255,255,255,.8);font-size:.85rem;font-family:${FONT_STACK}">${subtitle}</p>` : ''}
-            <!-- Date + slot pill -->
             <div style="display:inline-block;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.35);
                         border-radius:20px;padding:5px 16px;margin-top:4px">
-              <span style="color:#ffffff;font-size:.82rem;font-family:${FONT_STACK}">${slotLabel} &nbsp;·&nbsp; ${dateLabel}</span>
+              <span style="color:#ffffff;font-size:.82rem;font-family:${FONT_STACK}">${timeSlot} &nbsp;·&nbsp; ${dateLabel}</span>
             </div>
           </td>
         </tr>
       </table>
-
-      <!-- Bottom wave divider -->
       <div style="height:28px;background:#ffffff;clip-path:ellipse(55% 100% at 50% 100%)"></div>
     </td>
   </tr>
 
-  <!-- ═══ BODY ═══ -->
+  <!-- BODY -->
   <tr>
     <td class="email-pad" style="padding:28px 32px 32px">
-
       ${statCardsHTML}
       ${bodyHTML}
-
-      <!-- ─── Tips / Footer note ─── -->
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:28px">
         <tr>
           <td style="background:linear-gradient(135deg,#f5f5ff,#eef0fc);border:1.5px solid #dde0f8;
@@ -416,16 +429,14 @@ ${FONT_IMPORT}
             </p>
             <p style="margin:0;font-size:.8rem;color:#4b5563;line-height:1.6;font-family:${FONT_STACK}">
               নিয়মিত রেকর্ড আপডেট রাখুন। কোনো মুলতবি কাজ থাকলে দ্রুত সম্পন্ন করুন।
-              পরবর্তী ডাইজেস্ট ${slot === 'morning' ? 'সন্ধ্যা ৮টায়' : 'আগামীকাল সকাল ৮টায়'} পাঠানো হবে।
             </p>
           </td>
         </tr>
       </table>
-
     </td>
   </tr>
 
-  <!-- ═══ FOOTER ═══ -->
+  <!-- FOOTER -->
   <tr>
     <td style="background:#251577;padding:20px 32px">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
@@ -439,7 +450,7 @@ ${FONT_IMPORT}
             </p>
           </td>
           <td align="right">
-            <span style="font-size:1.5rem" title="Office Management System">📊</span>
+            <span style="font-size:1.5rem">📊</span>
           </td>
         </tr>
       </table>
@@ -447,18 +458,12 @@ ${FONT_IMPORT}
   </tr>
 
 </table>
-<!-- /Email card -->
-
 </td></tr>
 </table>
-<!-- /Outer wrapper -->
-
 </body>
 </html>`;
 }
 
-// ─────────────────────────────────────────────────────────────
-/** Professional table builder */
 function tableHTML(headers, rows, emptyMsg, { amountCols = [], badgeCols = {}, rowLimit = 50 } = {}) {
     if (rows.length === 0) {
         return `
@@ -474,44 +479,29 @@ function tableHTML(headers, rows, emptyMsg, { amountCols = [], badgeCols = {}, r
 
     const displayRows = rows.slice(0, rowLimit);
     const extraRows   = rows.length - displayRows.length;
-
     const thStyle = `padding:10px 12px;text-align:left;font-size:.78rem;color:#ffffff;
-                     font-weight:700;background:#251577;font-family:${FONT_STACK};
-                     white-space:nowrap;border-bottom:2px solid #1e0f60`;
-
+                     font-weight:700;background:#251577;font-family:${FONT_STACK};white-space:nowrap`;
     const ths = headers.map(h => `<th style="${thStyle}">${h}</th>`).join('');
 
     const trs = displayRows.map((row, i) => {
         const vals = Object.values(row);
         const keys = Object.keys(row);
         const bg   = i % 2 === 0 ? '#f8f8ff' : '#ffffff';
-
-        const tds = vals.map((v, ci) => {
+        const tds  = vals.map((v, ci) => {
             const key = keys[ci];
             let cell  = v ?? '—';
-
-            // Amount columns — format as taka
-            if (amountCols.includes(key) || amountCols.includes(ci)) {
-                cell = formatTaka(cell);
-            }
-            // Badge columns — render as styled badge
-            if (badgeCols[key] === 'priority') {
-                cell = priorityBadge(String(v));
-            } else if (badgeCols[key] === 'type') {
-                cell = typeBadge(String(v));
-            }
-
+            if (amountCols.includes(key) || amountCols.includes(ci)) cell = formatTaka(cell);
+            if (badgeCols[key] === 'priority') cell = priorityBadge(String(v));
+            else if (badgeCols[key] === 'type') cell = typeBadge(String(v));
             return `<td style="padding:9px 12px;border-bottom:1px solid #ebebfc;color:#1f2937;
                                font-size:.83rem;font-family:${FONT_STACK};vertical-align:middle">${cell}</td>`;
         }).join('');
-
         return `<tr style="background:${bg}">${tds}</tr>`;
     }).join('');
 
     const extraNote = extraRows > 0
         ? `<tr><td colspan="${headers.length}" style="padding:8px 12px;font-size:.78rem;
-               color:#6b7280;text-align:center;font-family:${FONT_STACK};background:#f9fafb;
-               border-top:1px dashed #d1d5db">
+               color:#6b7280;text-align:center;font-family:${FONT_STACK}">
                আরও ${toBnNum(extraRows)}টি রেকর্ড আছে — অ্যাপে দেখুন।
            </td></tr>`
         : '';
@@ -526,8 +516,6 @@ function tableHTML(headers, rows, emptyMsg, { amountCols = [], badgeCols = {}, r
     </div>`;
 }
 
-// ─────────────────────────────────────────────────────────────
-/** Section heading helper */
 function sectionTitle(icon, label, count) {
     return `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 14px">
@@ -545,159 +533,128 @@ function sectionTitle(icon, label, count) {
     </table>`;
 }
 
-// ─── Per-page email builders ──────────────────────────────────
+// ── 7. Per-page email builders ────────────────────────────────
 
-function buildAdvancePaymentEmail({ slot, dateLabel, data, officeName }) {
+function buildAdvancePaymentEmail({ dateLabel, timeSlot, data, officeName }) {
     const { active, archived, totalActive, totalArchived, grandTotal } = data;
     const body = `
         ${sectionTitle('✅', 'সক্রিয় পরিশোধ রেকর্ড', active.length)}
-        ${tableHTML(
-            ['কোড', 'নাম', 'শাখা', 'ধরণ', 'বিবরণ', 'টাকা', 'তারিখ'], active,
-            'কোনো সক্রিয় রেকর্ড নেই।',
-            { amountCols: ['amount'], badgeCols: { type: 'type' } }
-        )}
+        ${tableHTML(['কোড','নাম','শাখা','ধরণ','বিবরণ','টাকা','তারিখ'], active,
+            'কোনো সক্রিয় রেকর্ড নেই।', { amountCols: ['amount'], badgeCols: { type: 'type' } })}
         ${active.length > 0 ? `<p style="text-align:right;font-weight:700;color:#0f766e;font-family:${FONT_STACK};margin:8px 0 24px">সক্রিয় মোট: ${formatTaka(totalActive)}</p>` : ''}
-
         ${sectionTitle('📦', 'আর্কাইভ রেকর্ড', archived.length)}
-        ${tableHTML(
-            ['কোড', 'নাম', 'শাখা', 'ধরণ', 'বিবরণ', 'টাকা', 'তারিখ'], archived,
-            'কোনো আর্কাইভ রেকর্ড নেই।',
-            { amountCols: ['amount'], badgeCols: { type: 'type' } }
-        )}
+        ${tableHTML(['কোড','নাম','শাখা','ধরণ','বিবরণ','টাকা','তারিখ'], archived,
+            'কোনো আর্কাইভ রেকর্ড নেই।', { amountCols: ['amount'], badgeCols: { type: 'type' } })}
         ${archived.length > 0 ? `<p style="text-align:right;font-weight:700;color:#6b7280;font-family:${FONT_STACK};margin:8px 0 0">আর্কাইভ মোট: ${formatTaka(totalArchived)}</p>` : ''}`;
     return emailShell({
         headerAccent: '#0f766e', headerAccent2: '#0d9488',
         icon: '💵', title: 'অগ্রিম পরিশোধ — সম্পূর্ণ তালিকা',
         subtitle: 'সক্রিয় ও আর্কাইভ সহ সকল রেকর্ড',
-        dateLabel, slot, officeName, bodyHTML: body,
+        dateLabel, timeSlot, officeName, bodyHTML: body,
         statCards: [
-            { icon: '✅', label: 'সক্রিয় রেকর্ড',  value: toBnNum(active.length) },
-            { icon: '📦', label: 'আর্কাইভ রেকর্ড', value: toBnNum(archived.length) },
+            { icon: '✅', label: 'সক্রিয় রেকর্ড',   value: toBnNum(active.length) },
+            { icon: '📦', label: 'আর্কাইভ রেকর্ড',  value: toBnNum(archived.length) },
             { icon: '💰', label: 'সক্রিয় মোট টাকা', value: formatTaka(totalActive) },
-            { icon: '🏦', label: 'সর্বমোট টাকা',    value: formatTaka(grandTotal) },
+            { icon: '🏦', label: 'সর্বমোট টাকা',     value: formatTaka(grandTotal) },
         ]
     });
 }
 
-function buildBusinessStatsEmail({ slot, dateLabel, data, officeName }) {
+function buildBusinessStatsEmail({ dateLabel, timeSlot, data, officeName }) {
     const { rows, total } = data;
     const body = `
         ${sectionTitle('📊', 'সকল ব্যবসা পরিসংখ্যান রিপোর্ট', rows.length)}
-        ${tableHTML(
-            ['তারিখ', 'ইনচার্জ', 'ব্যবসা সাল', 'পরিমাণ'], rows,
-            'কোনো সংরক্ষিত রিপোর্ট পাওয়া যায়নি।',
-            { amountCols: ['amount'] }
-        )}
-        ${rows.length > 0 ? `<p style="text-align:right;font-weight:700;color:#251577;font-family:${FONT_STACK};margin:8px 0 0">মোট: ${formatTaka(total)}</p>` : ''}`;
+        ${tableHTML(['তারিখ','ইনচার্জ','১৫ দিনের ব্যবসা','তৈরিকারী'], rows,
+            'কোনো সংরক্ষিত রিপোর্ট পাওয়া যায়নি।', { amountCols: ['business'] })}
+        ${rows.length > 0 ? `<p style="text-align:right;font-weight:700;color:#251577;font-family:${FONT_STACK};margin:8px 0 0">মোট ব্যবসা: ${formatTaka(total)}</p>` : ''}`;
     return emailShell({
         headerAccent: '#251577', headerAccent2: '#1d4ed8',
         icon: '📊', title: 'ব্যবসা পরিসংখ্যান — সম্পূর্ণ তালিকা',
         subtitle: 'সকল সংরক্ষিত রিপোর্টের বিবরণ',
-        dateLabel, slot, officeName, bodyHTML: body,
+        dateLabel, timeSlot, officeName, bodyHTML: body,
         statCards: [
             { icon: '📋', label: 'মোট রিপোর্ট', value: toBnNum(rows.length) },
-            { icon: '💰', label: 'মোট পরিমাণ',  value: formatTaka(total) },
+            { icon: '💰', label: 'মোট ব্যবসা',  value: formatTaka(total) },
         ]
     });
 }
 
-function buildDonationEmail({ slot, dateLabel, data, officeName }) {
+function buildDonationEmail({ dateLabel, timeSlot, data, officeName }) {
     const { active, archived, totalActive, totalArchived } = data;
     const body = `
         ${sectionTitle('✅', 'সক্রিয় অনুদান রেকর্ড', active.length)}
-        ${tableHTML(
-            ['কোড', 'নাম', 'শাখা', 'ধরণ', 'টাকা', 'তারিখ'], active,
-            'কোনো সক্রিয় অনুদান রেকর্ড নেই।',
-            { amountCols: ['amount'], badgeCols: { type: 'type' } }
-        )}
+        ${tableHTML(['কোড','নাম','শাখা','ধরণ','টাকা','তারিখ'], active,
+            'কোনো সক্রিয় অনুদান রেকর্ড নেই।', { amountCols: ['amount'], badgeCols: { type: 'type' } })}
         ${active.length > 0 ? `<p style="text-align:right;font-weight:700;color:#7c3aed;font-family:${FONT_STACK};margin:8px 0 24px">সক্রিয় মোট: ${formatTaka(totalActive)}</p>` : ''}
-
         ${sectionTitle('📦', 'আর্কাইভ রেকর্ড', archived.length)}
-        ${tableHTML(
-            ['কোড', 'নাম', 'শাখা', 'ধরণ', 'টাকা', 'তারিখ'], archived,
-            'কোনো আর্কাইভ রেকর্ড নেই।',
-            { amountCols: ['amount'], badgeCols: { type: 'type' } }
-        )}
+        ${tableHTML(['কোড','নাম','শাখা','ধরণ','টাকা','তারিখ'], archived,
+            'কোনো আর্কাইভ রেকর্ড নেই।', { amountCols: ['amount'], badgeCols: { type: 'type' } })}
         ${archived.length > 0 ? `<p style="text-align:right;font-weight:700;color:#6b7280;font-family:${FONT_STACK};margin:8px 0 0">আর্কাইভ মোট: ${formatTaka(totalArchived)}</p>` : ''}`;
     return emailShell({
         headerAccent: '#7c3aed', headerAccent2: '#251577',
         icon: '🤝', title: 'অনুদান — সম্পূর্ণ তালিকা',
         subtitle: 'সক্রিয় ও আর্কাইভ সহ সকল রেকর্ড',
-        dateLabel, slot, officeName, bodyHTML: body,
+        dateLabel, timeSlot, officeName, bodyHTML: body,
         statCards: [
             { icon: '✅', label: 'সক্রিয় রেকর্ড',  value: toBnNum(active.length) },
             { icon: '📦', label: 'আর্কাইভ রেকর্ড', value: toBnNum(archived.length) },
-            { icon: '💰', label: 'সক্রিয় মোট',     value: formatTaka(totalActive) },
+            { icon: '💰', label: 'সক্রিয় মোট',      value: formatTaka(totalActive) },
         ]
     });
 }
 
-function buildHelpEmail({ slot, dateLabel, data, officeName }) {
+function buildHelpEmail({ dateLabel, timeSlot, data, officeName }) {
     const { pending, done } = data;
     const today = new Date().toISOString().split('T')[0];
     const overdue = pending.filter(r => r.date !== '(তারিখ নেই)' && r.date < today).length;
     const body = `
         ${sectionTitle('⏳', 'মুলতবি টাস্কসমূহ', pending.length)}
         ${pending.length > 0 ? `<p style="font-size:.82rem;color:#dc2626;font-weight:600;margin:0 0 12px;font-family:${FONT_STACK}">
-            ⚠️ এই টাস্কগুলো এখনও সম্পন্ন হয়নি। দ্রুত সম্পন্ন করুন।
-           </p>` : ''}
-        ${tableHTML(
-            ['টাস্কের শিরোনাম', 'নির্ধারিত তারিখ'], pending,
-            'অভিনন্দন! সকল টাস্ক সম্পন্ন হয়েছে। দারুণ কাজ!'
-        )}
-
+            ⚠️ এই টাস্কগুলো এখনও সম্পন্ন হয়নি। দ্রুত সম্পন্ন করুন।</p>` : ''}
+        ${tableHTML(['টাস্কের শিরোনাম','নির্ধারিত তারিখ'], pending,
+            'অভিনন্দন! সকল টাস্ক সম্পন্ন হয়েছে।')}
         ${sectionTitle('✅', 'সম্পন্ন টাস্কসমূহ', done.length)}
-        ${tableHTML(
-            ['টাস্কের শিরোনাম', 'তারিখ'], done,
-            'এখনো কোনো টাস্ক সম্পন্ন হয়নি।'
-        )}`;
+        ${tableHTML(['টাস্কের শিরোনাম','তারিখ'], done,
+            'এখনো কোনো টাস্ক সম্পন্ন হয়নি।')}`;
     return emailShell({
         headerAccent: '#b45309', headerAccent2: '#f59e0b',
         icon: '📋', title: 'সহায়তা — সম্পূর্ণ টাস্ক তালিকা',
         subtitle: 'মুলতবি ও সম্পন্ন সকল টাস্কের বিবরণ',
-        dateLabel, slot, officeName, bodyHTML: body,
+        dateLabel, timeSlot, officeName, bodyHTML: body,
         statCards: [
-            { icon: '⏳', label: 'মুলতবি টাস্ক',    value: toBnNum(pending.length) },
-            { icon: '🔴', label: 'মেয়াদোত্তীর্ণ',  value: toBnNum(overdue) },
-            { icon: '✅', label: 'সম্পন্ন টাস্ক',   value: toBnNum(done.length) },
+            { icon: '⏳', label: 'মুলতবি টাস্ক',   value: toBnNum(pending.length) },
+            { icon: '🔴', label: 'মেয়াদোত্তীর্ণ', value: toBnNum(overdue) },
+            { icon: '✅', label: 'সম্পন্ন টাস্ক',  value: toBnNum(done.length) },
         ]
     });
 }
 
-function buildIssueEmail({ slot, dateLabel, data, officeName }) {
+function buildIssueEmail({ dateLabel, timeSlot, data, officeName }) {
     const { pending, resolved } = data;
     const highCount = pending.filter(r => r.priority === 'high').length;
     const body = `
         ${sectionTitle('⚠️', 'চলমান সমস্যাসমূহ', pending.length)}
         ${highCount > 0 ? `<p style="font-size:.82rem;color:#dc2626;font-weight:600;margin:0 0 12px;font-family:${FONT_STACK}">
-            🔴 ${toBnNum(highCount)}টি উচ্চ-গুরুত্বের সমস্যা রয়েছে — তাৎক্ষণিক পদক্ষেপ নিন।
-           </p>` : ''}
-        ${tableHTML(
-            ['তারিখ', 'সমস্যার বিবরণ', 'গুরুত্ব'], pending,
-            'কোনো চলমান সমস্যা নেই। সবকিছু ঠিকঠাক আছে!',
-            { badgeCols: { priority: 'priority' } }
-        )}
-
+            🔴 ${toBnNum(highCount)}টি উচ্চ-গুরুত্বের সমস্যা রয়েছে — তাৎক্ষণিক পদক্ষেপ নিন।</p>` : ''}
+        ${tableHTML(['তারিখ','সমস্যার বিবরণ','গুরুত্ব'], pending,
+            'কোনো চলমান সমস্যা নেই। সবকিছু ঠিকঠাক আছে!', { badgeCols: { priority: 'priority' } })}
         ${sectionTitle('✅', 'সমাধানকৃত সমস্যাসমূহ', resolved.length)}
-        ${tableHTML(
-            ['তারিখ', 'সমস্যার বিবরণ', 'গুরুত্ব'], resolved,
-            'কোনো সমাধানকৃত সমস্যা নেই।',
-            { badgeCols: { priority: 'priority' } }
-        )}`;
+        ${tableHTML(['তারিখ','সমস্যার বিবরণ','গুরুত্ব'], resolved,
+            'কোনো সমাধানকৃত সমস্যা নেই।', { badgeCols: { priority: 'priority' } })}`;
     return emailShell({
         headerAccent: '#dc2626', headerAccent2: '#9f1239',
         icon: '⚠️', title: 'সমস্যা ও সমাধান — সম্পূর্ণ তালিকা',
         subtitle: 'চলমান ও সমাধানকৃত সকল সমস্যার স্ট্যাটাস',
-        dateLabel, slot, officeName, bodyHTML: body,
+        dateLabel, timeSlot, officeName, bodyHTML: body,
         statCards: [
-            { icon: '🔴', label: 'উচ্চ গুরুত্ব',      value: toBnNum(highCount) },
-            { icon: '📌', label: 'মোট চলমান',          value: toBnNum(pending.length) },
-            { icon: '✅', label: 'সমাধানকৃত',          value: toBnNum(resolved.length) },
+            { icon: '🔴', label: 'উচ্চ গুরুত্ব', value: toBnNum(highCount) },
+            { icon: '📌', label: 'মোট চলমান',     value: toBnNum(pending.length) },
+            { icon: '✅', label: 'সমাধানকৃত',     value: toBnNum(resolved.length) },
         ]
     });
 }
 
-function buildPremiumEmail({ slot, dateLabel, data, officeName }) {
+function buildPremiumEmail({ dateLabel, timeSlot, data, officeName }) {
     const { rows, totalDeposit, totalBalance } = data;
     const formattedRows = rows.map(r => ({
         type:    r.type,
@@ -709,94 +666,85 @@ function buildPremiumEmail({ slot, dateLabel, data, officeName }) {
     }));
     const body = `
         ${sectionTitle('🏦', 'সকল প্রিমিয়াম জমার রেকর্ড', rows.length)}
-        ${tableHTML(
-            ['ধরণ', 'স্লিপ নং', 'টাকা', 'জমা', 'বকেয়া', 'তারিখ'], formattedRows,
-            'কোনো প্রিমিয়াম জমার রেকর্ড নেই।',
-            { badgeCols: { type: 'type' } }
-        )}
+        ${tableHTML(['ধরণ','স্লিপ নং','টাকা','জমা','বকেয়া','তারিখ'], formattedRows,
+            'কোনো প্রিমিয়াম জমার রেকর্ড নেই।', { badgeCols: { type: 'type' } })}
         ${rows.length > 0 ? `
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:10px">
-          <tr>
-            <td style="text-align:right;font-weight:700;color:#0369a1;font-family:${FONT_STACK};padding:4px 0">
-              মোট জমা: ${formatTaka(totalDeposit)} &nbsp;|&nbsp; মোট বকেয়া: ${formatTaka(totalBalance)}
-            </td>
-          </tr>
-        </table>` : ''}`;
+        <p style="text-align:right;font-weight:700;color:#0369a1;font-family:${FONT_STACK};margin:8px 0 0">
+          মোট জমা: ${formatTaka(totalDeposit)} &nbsp;|&nbsp; মোট বকেয়া: ${formatTaka(totalBalance)}
+        </p>` : ''}`;
     return emailShell({
         headerAccent: '#0369a1', headerAccent2: '#251577',
         icon: '🏦', title: 'প্রিমিয়াম জমা — সম্পূর্ণ তালিকা',
         subtitle: 'সকল প্রিমিয়াম কালেকশনের বিবরণ',
-        dateLabel, slot, officeName, bodyHTML: body,
+        dateLabel, timeSlot, officeName, bodyHTML: body,
         statCards: [
-            { icon: '📑', label: 'মোট এন্ট্রি',  value: toBnNum(rows.length) },
-            { icon: '✅', label: 'মোট জমা',       value: formatTaka(totalDeposit) },
-            { icon: '🔔', label: 'মোট বকেয়া',    value: formatTaka(totalBalance) },
+            { icon: '📑', label: 'মোট এন্ট্রি', value: toBnNum(rows.length) },
+            { icon: '✅', label: 'মোট জমা',      value: formatTaka(totalDeposit) },
+            { icon: '🔔', label: 'মোট বকেয়া',   value: formatTaka(totalBalance) },
         ]
     });
 }
 
-// ── 6. All 6 page definitions ─────────────────────────────────
+// ── 8. Page definitions ───────────────────────────────────────
 
-function getPageDefinitions(slot) {
-    return [
-        {
-            key: 'advance_payment', name: 'অগ্রিম পরিশোধ', icon: '💵', prefKey: 'advance_payment',
-            fetch:      (uid) => fetchAdvancePayments(uid),
-            isEmpty:    (data) => data.active.length === 0 && data.archived.length === 0,
-            totalRows:  (data) => data.active.length + data.archived.length,
-            buildEmail: (params) => buildAdvancePaymentEmail(params),
-            subject:    (slot, dateLabel, data) =>
-                `💵 অগ্রিম পরিশোধ ${slot === 'morning' ? '🌅 সকাল' : '🌆 সন্ধ্যা'} — সক্রিয়: ${data.active.length}টি · আর্কাইভ: ${data.archived.length}টি · ${dateLabel}`,
-        },
-        {
-            key: 'business_stats', name: 'ব্যবসা পরিসংখ্যান', icon: '📊', prefKey: 'business_stats',
-            fetch:      (uid) => fetchBusinessStats(uid),
-            isEmpty:    (data) => data.rows.length === 0,
-            totalRows:  (data) => data.rows.length,
-            buildEmail: (params) => buildBusinessStatsEmail(params),
-            subject:    (slot, dateLabel, data) =>
-                `📊 ব্যবসা পরিসংখ্যান ${slot === 'morning' ? '🌅 সকাল' : '🌆 সন্ধ্যা'} — ${data.rows.length}টি রিপোর্ট · ${dateLabel}`,
-        },
-        {
-            key: 'donation', name: 'অনুদান', icon: '🤝', prefKey: 'donation',
-            fetch:      (uid) => fetchDonations(uid),
-            isEmpty:    (data) => data.active.length === 0 && data.archived.length === 0,
-            totalRows:  (data) => data.active.length + data.archived.length,
-            buildEmail: (params) => buildDonationEmail(params),
-            subject:    (slot, dateLabel, data) =>
-                `🤝 অনুদান ${slot === 'morning' ? '🌅 সকাল' : '🌆 সন্ধ্যা'} — সক্রিয়: ${data.active.length}টি · আর্কাইভ: ${data.archived.length}টি · ${dateLabel}`,
-        },
-        {
-            key: 'help', name: 'সহায়তা', icon: '📋', prefKey: 'help',
-            fetch:      (uid) => fetchAllTasks(uid),
-            isEmpty:    (data) => data.pending.length === 0 && data.done.length === 0,
-            totalRows:  (data) => data.pending.length + data.done.length,
-            buildEmail: (params) => buildHelpEmail(params),
-            subject:    (slot, dateLabel, data) =>
-                `📋 সহায়তা ${slot === 'morning' ? '🌅 সকাল' : '🌆 সন্ধ্যা'} — মুলতবি: ${data.pending.length}টি · সম্পন্ন: ${data.done.length}টি · ${dateLabel}`,
-        },
-        {
-            key: 'office_issue', name: 'সমস্যা ও সমাধান', icon: '⚠️', prefKey: 'office_issue',
-            fetch:      (uid) => fetchIssues(uid),
-            isEmpty:    (data) => data.pending.length === 0 && data.resolved.length === 0,
-            totalRows:  (data) => data.pending.length + data.resolved.length,
-            buildEmail: (params) => buildIssueEmail(params),
-            subject:    (slot, dateLabel, data) =>
-                `⚠️ সমস্যা ও সমাধান ${slot === 'morning' ? '🌅 সকাল' : '🌆 সন্ধ্যা'} — চলমান: ${data.pending.length}টি · সমাধান: ${data.resolved.length}টি · ${dateLabel}`,
-        },
-        {
-            key: 'premium_submit', name: 'প্রিমিয়াম জমা', icon: '🏦', prefKey: 'premium_submit',
-            fetch:      (uid) => fetchPremiumStatements(uid),
-            isEmpty:    (data) => data.rows.length === 0,
-            totalRows:  (data) => data.rows.length,
-            buildEmail: (params) => buildPremiumEmail(params),
-            subject:    (slot, dateLabel, data) =>
-                `🏦 প্রিমিয়াম জমা ${slot === 'morning' ? '🌅 সকাল' : '🌆 সন্ধ্যা'} — ${data.rows.length}টি এন্ট্রি · ${dateLabel}`,
-        },
-    ];
-}
+const PAGE_MAP = {
+    help: {
+        name: 'সহায়তা (টাস্ক তালিকা)', icon: '📋', timeSlot: '⏰ সকাল ১০টা',
+        fetch:      (uid) => fetchAllTasks(uid),
+        isEmpty:    (data) => data.pending.length === 0 && data.done.length === 0,
+        totalRows:  (data) => data.pending.length + data.done.length,
+        buildEmail: (p)   => buildHelpEmail(p),
+        subject:    (dateLabel, data) =>
+            `📋 সহায়তা — মুলতবি: ${data.pending.length}টি · সম্পন্ন: ${data.done.length}টি · ${dateLabel}`,
+    },
+    office_issue: {
+        name: 'সমস্যা ও সমাধান', icon: '⚠️', timeSlot: '⏰ দুপুর ১২টা',
+        fetch:      (uid) => fetchIssues(uid),
+        isEmpty:    (data) => data.pending.length === 0 && data.resolved.length === 0,
+        totalRows:  (data) => data.pending.length + data.resolved.length,
+        buildEmail: (p)   => buildIssueEmail(p),
+        subject:    (dateLabel, data) =>
+            `⚠️ সমস্যা ও সমাধান — চলমান: ${data.pending.length}টি · সমাধান: ${data.resolved.length}টি · ${dateLabel}`,
+    },
+    business_stats: {
+        name: 'ব্যবসা পরিসংখ্যান', icon: '📊', timeSlot: '⏰ বিকাল ২টা',
+        fetch:      (uid) => fetchBusinessStats(uid),
+        isEmpty:    (data) => data.rows.length === 0,
+        totalRows:  (data) => data.rows.length,
+        buildEmail: (p)   => buildBusinessStatsEmail(p),
+        subject:    (dateLabel, data) =>
+            `📊 ব্যবসা পরিসংখ্যান — ${data.rows.length}টি রিপোর্ট · ${dateLabel}`,
+    },
+    premium_submit: {
+        name: 'প্রিমিয়াম জমা', icon: '🏦', timeSlot: '⏰ বিকাল ৪টা',
+        fetch:      (uid) => fetchPremiumStatements(uid),
+        isEmpty:    (data) => data.rows.length === 0,
+        totalRows:  (data) => data.rows.length,
+        buildEmail: (p)   => buildPremiumEmail(p),
+        subject:    (dateLabel, data) =>
+            `🏦 প্রিমিয়াম জমা — ${data.rows.length}টি এন্ট্রি · ${dateLabel}`,
+    },
+    advance_payment: {
+        name: 'অগ্রিম পরিশোধ', icon: '💵', timeSlot: '⏰ সন্ধ্যা ৬টা',
+        fetch:      (uid) => fetchAdvancePayments(uid),
+        isEmpty:    (data) => data.active.length === 0 && data.archived.length === 0,
+        totalRows:  (data) => data.active.length + data.archived.length,
+        buildEmail: (p)   => buildAdvancePaymentEmail(p),
+        subject:    (dateLabel, data) =>
+            `💵 অগ্রিম পরিশোধ — সক্রিয়: ${data.active.length}টি · আর্কাইভ: ${data.archived.length}টি · ${dateLabel}`,
+    },
+    donation: {
+        name: 'অনুদান', icon: '🤝', timeSlot: '⏰ রাত ৮টা',
+        fetch:      (uid) => fetchDonations(uid),
+        isEmpty:    (data) => data.active.length === 0 && data.archived.length === 0,
+        totalRows:  (data) => data.active.length + data.archived.length,
+        buildEmail: (p)   => buildDonationEmail(p),
+        subject:    (dateLabel, data) =>
+            `🤝 অনুদান — সক্রিয়: ${data.active.length}টি · আর্কাইভ: ${data.archived.length}টি · ${dateLabel}`,
+    },
+};
 
-// ── 7. Send email ─────────────────────────────────────────────
+// ── 9. Send email helper ──────────────────────────────────────
 
 async function sendEmail({ toEmail, toName, subject, htmlBody }) {
     await transporter.sendMail({
@@ -807,15 +755,26 @@ async function sendEmail({ toEmail, toName, subject, htmlBody }) {
     });
 }
 
-// ── 8. Main ───────────────────────────────────────────────────
+// ── 10. Main ──────────────────────────────────────────────────
 
 async function run() {
-    const slot      = getDigestSlot();
-    const today     = getTodayStr();
-    const dateLabel = getBengaliDateLabel();
-    const pages     = getPageDefinitions(slot);
+    const targetPageKey = getTargetPage();
 
-    console.log(`🚀 Email worker v3 started — slot: ${slot}`);
+    if (!targetPageKey) {
+        console.log('ℹ️  No target page determined. Exiting (silent hours or unknown hour).');
+        process.exit(0);
+    }
+
+    const page = PAGE_MAP[targetPageKey];
+    if (!page) {
+        console.error(`❌ Unknown page key: "${targetPageKey}". Valid keys: ${Object.keys(PAGE_MAP).join(', ')}`);
+        process.exit(1);
+    }
+
+    const dateLabel = getBengaliDateLabel();
+    const today     = getTodayStr();
+
+    console.log(`🚀 Email worker v5 — page: ${targetPageKey} (${page.name})`);
     console.log(`📅 Today (Dhaka): ${today} | UTC: ${new Date().toISOString()}\n`);
 
     let totalSent = 0, totalFailed = 0, totalSkipped = 0;
@@ -824,22 +783,42 @@ async function run() {
         const usersRef  = db.collection('artifacts').doc('default-app-id').collection('users');
         const usersSnap = await usersRef.get();
 
-        if (usersSnap.empty) { console.log('ℹ️  No users found.'); process.exit(0); }
+        if (usersSnap.empty) {
+            console.log('ℹ️  No users found.');
+            process.exit(0);
+        }
         console.log(`👥 Found ${usersSnap.size} user(s).\n`);
 
         for (const userDoc of usersSnap.docs) {
             const uid = userDoc.id;
             console.log(`── User: ${uid}`);
 
-            const subRef  = usersRef.doc(uid).collection('data').doc('emailSubscription');
-            const subSnap = await subRef.get();
+            // Load subscription
+            let sub = null;
+            try {
+                const subSnap = await usersRef.doc(uid)
+                    .collection('data').doc('emailSubscription').get();
+                if (subSnap.exists) sub = subSnap.data();
+            } catch (e) {
+                console.log(`  ⚠️  Could not read subscription: ${e.message} — skip.`);
+                totalSkipped++;
+                continue;
+            }
 
-            if (!subSnap.exists)     { console.log(`  ⏭️  No email subscription — skip.`); totalSkipped++; continue; }
-            const sub = subSnap.data();
-            if (!sub.active)         { console.log(`  ⏭️  Subscription inactive — skip.`); totalSkipped++; continue; }
-            if (!sub.email)          { console.log(`  ⚠️  No email address — skip.`); totalSkipped++; continue; }
-            if (!sub.prefs?.[slot])  { console.log(`  ⏭️  Opted out of ${slot} digest — skip.`); totalSkipped++; continue; }
+            if (!sub)             { console.log(`  ⏭️  No email subscription — skip.`); totalSkipped++; continue; }
+            if (!sub.active)      { console.log(`  ⏭️  Subscription inactive — skip.`);  totalSkipped++; continue; }
+            if (!sub.email)       { console.log(`  ⚠️  No email address — skip.`);        totalSkipped++; continue; }
 
+            // Check per-page opt-out
+            const pagePrefs   = (sub.prefs && sub.prefs.pages) || {};
+            const pageEnabled = pagePrefs[targetPageKey] !== false;
+            if (!pageEnabled) {
+                console.log(`  ⏭️  [${page.name}] opted out — skip.`);
+                totalSkipped++;
+                continue;
+            }
+
+            // Load office name
             let officeName = null;
             try {
                 const pSnap = await usersRef.doc(uid).collection('data').doc('profile').get();
@@ -848,39 +827,28 @@ async function run() {
 
             const toName = officeName || sub.email;
 
-            for (const page of pages) {
-                const pagePrefs   = (sub.prefs && sub.prefs.pages) || {};
-                const pageEnabled = pagePrefs[page.key] !== false;
+            try {
+                const data = await page.fetch(uid);
 
-                if (!pageEnabled) {
-                    console.log(`  ⏭️  [${page.name}] opted out — skip.`);
+                if (page.isEmpty(data)) {
+                    console.log(`  ⏭️  [${page.name}] no records — skip (no empty email sent).`);
                     totalSkipped++;
                     continue;
                 }
 
-                try {
-                    const data = await page.fetch(uid);
+                const htmlBody = page.buildEmail({ dateLabel, timeSlot: page.timeSlot, data, officeName });
+                const subject  = page.subject(dateLabel, data);
+                await sendEmail({ toEmail: sub.email, toName, subject, htmlBody });
+                console.log(`  📧 [${page.name}] → ${sub.email} — OK (${page.totalRows(data)} records)`);
+                totalSent++;
 
-                    // Skip sending if module has no records at all
-                    if (page.isEmpty(data)) {
-                        console.log(`  ⏭️  [${page.name}] no records — skip (no empty email sent).`);
-                        totalSkipped++;
-                        continue;
-                    }
-
-                    const htmlBody = page.buildEmail({ slot, dateLabel, data, officeName });
-                    const subject  = page.subject(slot, dateLabel, data);
-                    await sendEmail({ toEmail: sub.email, toName, subject, htmlBody });
-                    console.log(`  📧 [${page.name}] → ${sub.email} — OK (${page.totalRows(data)} records)`);
-                    totalSent++;
-                } catch (err) {
-                    console.error(`  ❌ [${page.name}] FAILED: ${err.message}`);
-                    totalFailed++;
-                }
-
-                await new Promise(r => setTimeout(r, 400));
+            } catch (err) {
+                console.error(`  ❌ [${page.name}] FAILED for ${uid}: ${err.message}`);
+                totalFailed++;
             }
-            console.log('');
+
+            // Small delay between users
+            await new Promise(r => setTimeout(r, 300));
         }
 
     } catch (err) {
