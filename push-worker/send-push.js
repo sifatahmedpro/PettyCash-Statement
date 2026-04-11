@@ -861,6 +861,62 @@ async function resetSeenTodayForAllUsers(userDocs) {
 }
 
 // ══════════════════════════════════════════════════════════════
+// WRITE PUSH DELIVERY LOG TO FIRESTORE
+// Writes to two paths:
+//   1. users/{uid}/pushLogs/{auto-id}      ← per-user delivery record
+//   2. artifacts/default-app-id/pushRunLogs/{auto-id} ← global run log
+// The notification-log page reads both collections.
+// ══════════════════════════════════════════════════════════════
+
+async function writePushLog(uid, module, result, count, statusKey, slotHour) {
+    try {
+        const now  = admin.firestore.FieldValue.serverTimestamp();
+        const tag  = module.tag;
+        const icon = module.icon || '🔔';
+        const title = module.isTaskReminder ? 'টাস্ক ম্যানেজার' : (module.title || tag);
+
+        // Build a rich detail string showing record count and slot context
+        let detail = '';
+        if (module.isTaskReminder) {
+            detail = `টাস্ক রিমাইন্ডার — ঘণ্টা ${slotHour}:০০`;
+        } else if (count !== null && count !== undefined && module.countLabel) {
+            detail = `${count} ${module.countLabel} — ঘণ্টা ${slotHour}:০০ ঢাকা`;
+        } else {
+            detail = `নির্ধারিত রিমাইন্ডার — ঘণ্টা ${slotHour}:০০ ঢাকা`;
+        }
+
+        const logEntry = {
+            tag,
+            label:    title,
+            icon,
+            status:   result.errors > 0 && result.pushed === 0 ? 'failed' : 'sent',
+            sentAt:   now,
+            detail,
+            sent:     result.pushed,
+            failed:   result.errors,
+            skipped:  result.skipped,
+            slotHour,
+            statusKey,
+            runId:    CONFIG.RUN_ID,
+            recordCount: count ?? null,
+        };
+
+        // 1. Per-user log
+        await getDB()
+            .collection(`artifacts/default-app-id/users/${uid}/pushLogs`)
+            .add(logEntry);
+
+        // 2. Global run log (for the run-level summary view)
+        await getDB()
+            .collection('artifacts/default-app-id/pushRunLogs')
+            .add({ ...logEntry, uid });
+
+    } catch (err) {
+        logger.warn('writePushLog failed (non-fatal)', { uid, tag: module.tag, error: err.message });
+    }
+}
+
+// ══════════════════════════════════════════════════════════════
 // FETCH ALL PUSH SUBSCRIPTIONS FOR A USER
 // ══════════════════════════════════════════════════════════════
 
@@ -905,7 +961,7 @@ async function getUserSubscriptions(uid) {
 // Returns { pushed, skipped, errors, expiredEndpoints }
 // ══════════════════════════════════════════════════════════════
 
-async function sendModuleNotificationToUser(uid, module, subscriptions) {
+async function sendModuleNotificationToUser(uid, module, subscriptions, slotHour = null) {
     const result = { pushed: 0, skipped: 0, errors: 0, expiredEndpoints: [] };
 
     const statusKey  = buildStatusKey(module.tag, null);
@@ -948,6 +1004,7 @@ async function sendModuleNotificationToUser(uid, module, subscriptions) {
 
     if (result.pushed > 0 && !CONFIG.DRY_RUN) {
         await markSeenToday(uid, statusKey);
+        await writePushLog(uid, module, result, count, statusKey, slotHour);
     }
 
     return result;
@@ -1026,6 +1083,13 @@ async function sendTaskReminderToUser(uid, today, subscriptions) {
     if (result.pushed > 0 && !CONFIG.DRY_RUN) {
         await markSeenToday(uid, statusKey);
         await markTaskNotificationsAsPushed(uid);
+        const taskModule = {
+            tag:           'task-manager',
+            icon:          '📋',
+            title:         'টাস্ক ম্যানেজার',
+            isTaskReminder: true,
+        };
+        await writePushLog(uid, taskModule, result, pendingTasks.length, statusKey, 10);
     }
 
     return result;
@@ -1059,7 +1123,7 @@ async function processUserAtHour(uid, dhakaHour, today) {
             if (module.isTaskReminder) {
                 result = await sendTaskReminderToUser(uid, today, subscriptions);
             } else {
-                result = await sendModuleNotificationToUser(uid, module, subscriptions);
+                result = await sendModuleNotificationToUser(uid, module, subscriptions, dhakaHour);
             }
 
             stats.pushed   += result.pushed;
@@ -1241,7 +1305,7 @@ async function runPushWorker() {
 (async () => {
     try {
         logger.info('═══════════════════════════════════════════════════════════');
-        logger.info('   অফিস ম্যানেজমেন্ট সিস্টেম — Push Notification Worker v4.0');
+        logger.info('   অফিস ম্যানেজমেন্ট সিস্টেম — Push Notification Worker v5.1');
         logger.info('═══════════════════════════════════════════════════════════');
 
         initializeFirebase();
