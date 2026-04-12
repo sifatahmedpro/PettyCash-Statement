@@ -18,7 +18,7 @@
  *        accounts_mr / accounts_loan (was: premiumStatements)
  *
  *   3. CORRECT FIELD NAMES — business stats uses meta.reportDate,
- *      meta.inchargeName, meta.total15DaysBusiness. Premium uses
+ *      meta.inchargeName, createdAt. Premium uses
  *      amount / deposit / balance / slipNo / date / type.
  *
  *   4. SCHEDULE (Dhaka, UTC+6):
@@ -163,7 +163,9 @@ async function fetchAdvancePayments(uid) {
 
 /**
  * business_analysis_archives collection
- * Fields stored under meta: reportDate, inchargeName, total15DaysBusiness, createdAt
+ * Fields stored under meta: reportDate, inchargeName, createdBy, createdAt
+ * NOTE: total15DaysBusiness does NOT exist in this collection — it only
+ * lives in commission_archives. The main archive stores report metadata only.
  */
 async function fetchBusinessStats(uid) {
     let rows = [];
@@ -174,18 +176,15 @@ async function fetchBusinessStats(uid) {
             const data = d.data();
             const meta = data.meta || {};
             rows.push({
-                date:      meta.reportDate          || '—',
-                incharge:  meta.inchargeName        || '—',
-                business:  meta.total15DaysBusiness != null
-                               ? Number(meta.total15DaysBusiness) : 0,
-                createdBy: meta.createdBy           || '—'
+                date:      meta.reportDate   || '—',
+                incharge:  meta.inchargeName || '—',
+                createdBy: meta.createdBy    || '—'
             });
         });
     } catch (e) {
         console.warn('  ⚠️ business_analysis_archives fetch error:', e.message);
     }
-    const total = rows.reduce((s, r) => s + (Number(r.business) || 0), 0);
-    return { rows, total };
+    return { rows, total: rows.length };
 }
 
 /**
@@ -564,9 +563,8 @@ function buildBusinessStatsEmail({ dateLabel, timeSlot, data, officeName }) {
     const { rows, total } = data;
     const body = `
         ${sectionTitle('📊', 'সকল ব্যবসা পরিসংখ্যান রিপোর্ট', rows.length)}
-        ${tableHTML(['তারিখ','ইনচার্জ','১৫ দিনের ব্যবসা','তৈরিকারী'], rows,
-            'কোনো সংরক্ষিত রিপোর্ট পাওয়া যায়নি।', { amountCols: ['business'] })}
-        ${rows.length > 0 ? `<p style="text-align:right;font-weight:700;color:#251577;font-family:${FONT_STACK};margin:8px 0 0">মোট ব্যবসা: ${formatTaka(total)}</p>` : ''}`;
+        ${tableHTML(['তারিখ','ইনচার্জ','তৈরিকারী'], rows,
+            'কোনো সংরক্ষিত রিপোর্ট পাওয়া যায়নি।')}`;
     return emailShell({
         headerAccent: '#251577', headerAccent2: '#1d4ed8',
         icon: '📊', title: 'ব্যবসা পরিসংখ্যান — সম্পূর্ণ তালিকা',
@@ -574,7 +572,6 @@ function buildBusinessStatsEmail({ dateLabel, timeSlot, data, officeName }) {
         dateLabel, timeSlot, officeName, bodyHTML: body,
         statCards: [
             { icon: '📋', label: 'মোট রিপোর্ট', value: toBnNum(rows.length) },
-            { icon: '💰', label: 'মোট ব্যবসা',  value: formatTaka(total) },
         ]
     });
 }
@@ -744,7 +741,60 @@ const PAGE_MAP = {
     },
 };
 
-// ── 9. Send email helper ──────────────────────────────────────
+// ── 9. Firestore log writers ──────────────────────────────────
+//
+//   Per-user:  artifacts/default-app-id/users/{uid}/emailLogs/{auto-id}
+//   Global:    artifacts/default-app-id/emailRunLogs/{auto-id}
+//
+// Schema mirrors send-push.js writePushLog so notification-log_module.js
+// can read both collections with identical field names.
+// ─────────────────────────────────────────────────────────────
+
+async function writeEmailLog(uid, page, targetPageKey, status, recordCount, detail) {
+    try {
+        const now = admin.firestore.FieldValue.serverTimestamp();
+        // Map page key to slot hour (mirrors UPCOMING_SCHEDULE in notification-log_module.js)
+        const slotHourMap = {
+            help:            10,
+            office_issue:    12,
+            business_stats:  14,
+            premium_submit:  16,
+            advance_payment: 18,
+            donation:        20,
+        };
+        const slotHour = slotHourMap[targetPageKey] ?? null;
+
+        const logEntry = {
+            tag:         targetPageKey,
+            label:       page.name,
+            icon:        '📧',
+            status,                      // 'sent' | 'failed' | 'skipped'
+            sentAt:      now,
+            detail:      detail || `${page.name} ইমেইল — ${slotHour}:০০ ঢাকা`,
+            sent:        status === 'sent'    ? 1 : 0,
+            failed:      status === 'failed'  ? 1 : 0,
+            skipped:     status === 'skipped' ? 1 : 0,
+            slotHour,
+            recordCount: recordCount ?? null,
+        };
+
+        // 1. Per-user email log
+        await db.collection('artifacts').doc('default-app-id')
+            .collection('users').doc(uid)
+            .collection('emailLogs')
+            .add(logEntry);
+
+        // 2. Global run log (for summary view on notification-log page)
+        await db.collection('artifacts').doc('default-app-id')
+            .collection('emailRunLogs')
+            .add({ ...logEntry, uid });
+
+    } catch (err) {
+        console.warn(`  ⚠️  writeEmailLog failed (non-fatal): ${err.message}`);
+    }
+}
+
+// ── 10. Send email helper ─────────────────────────────────────
 
 async function sendEmail({ toEmail, toName, subject, htmlBody }) {
     await transporter.sendMail({
@@ -755,7 +805,7 @@ async function sendEmail({ toEmail, toName, subject, htmlBody }) {
     });
 }
 
-// ── 10. Main ──────────────────────────────────────────────────
+// ── 11. Main ──────────────────────────────────────────────────
 
 async function run() {
     const targetPageKey = getTargetPage();
@@ -817,7 +867,6 @@ async function run() {
                 totalSkipped++;
                 continue;
             }
-
             // Load office name
             let officeName = null;
             try {
@@ -833,6 +882,7 @@ async function run() {
                 if (page.isEmpty(data)) {
                     console.log(`  ⏭️  [${page.name}] no records — skip (no empty email sent).`);
                     totalSkipped++;
+                    await writeEmailLog(uid, page, targetPageKey, 'skipped', 0, `${page.name} — রেকর্ড নেই, ইমেইল পাঠানো হয়নি`);
                     continue;
                 }
 
@@ -841,10 +891,12 @@ async function run() {
                 await sendEmail({ toEmail: sub.email, toName, subject, htmlBody });
                 console.log(`  📧 [${page.name}] → ${sub.email} — OK (${page.totalRows(data)} records)`);
                 totalSent++;
+                await writeEmailLog(uid, page, targetPageKey, 'sent', page.totalRows(data), `${page.name} → ${sub.email} (${page.totalRows(data)} রেকর্ড)`);
 
             } catch (err) {
                 console.error(`  ❌ [${page.name}] FAILED for ${uid}: ${err.message}`);
                 totalFailed++;
+                await writeEmailLog(uid, page, targetPageKey, 'failed', null, `${page.name} — ব্যর্থ: ${err.message}`);
             }
 
             // Small delay between users
