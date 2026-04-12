@@ -1312,7 +1312,7 @@ async function resetSeenTodayForAllUsers(userDocs) {
 // The notification-log page reads both collections.
 // ══════════════════════════════════════════════════════════════
 
-async function writePushLog(uid, module, result, count, statusKey, slotHour) {
+async function writePushLog(uid, module, result, count, statusKey, slotHour, deviceResults) {
     try {
         const now  = admin.firestore.FieldValue.serverTimestamp();
         const tag  = module.tag;
@@ -1329,6 +1329,11 @@ async function writePushLog(uid, module, result, count, statusKey, slotHour) {
             detail = `নির্ধারিত রিমাইন্ডার — ঘণ্টা ${slotHour}:০০ ঢাকা`;
         }
 
+        // Build per-device delivery list: [{ name, status }]
+        const devices = Array.isArray(deviceResults)
+            ? deviceResults.map(d => ({ name: d.name, status: d.status }))
+            : [];
+
         const logEntry = {
             tag,
             label:    title,
@@ -1343,6 +1348,7 @@ async function writePushLog(uid, module, result, count, statusKey, slotHour) {
             statusKey,
             runId:    CONFIG.RUN_ID,
             recordCount: count ?? null,
+            devices,          // ← per-device delivery: [{ name, status }]
         };
 
         // 1. Per-user log
@@ -1428,32 +1434,38 @@ async function sendModuleNotificationToUser(uid, module, subscriptions, slotHour
         docs  = data.docs;
     }
 
-    // Send to each subscription
+    // Send to each subscription — track per-device results
+    const deviceResults = [];
     for (const sub of subscriptions) {
         const payload = buildModulePayload(module, statusKey, uid, count, docs, sub.deviceName);
+        const dName   = sub.deviceName || 'Unknown Device';
 
         if (CONFIG.DRY_RUN) {
             logger.info(`🧪 DRY RUN: would send [${module.tag}]`, {
-                uid, device: sub.deviceName, count,
+                uid, device: dName, count,
             });
             result.pushed++;
+            deviceResults.push({ name: dName, status: 'sent' });
             continue;
         }
 
         const res = await sendWebPushWithRetry(sub, payload);
         if (res.success) {
             result.pushed++;
+            deviceResults.push({ name: dName, status: 'sent' });
         } else if (res.expired) {
             result.expiredEndpoints.push(res.endpoint);
             result.errors++;
+            deviceResults.push({ name: dName, status: 'failed' });
         } else {
             result.errors++;
+            deviceResults.push({ name: dName, status: 'failed' });
         }
     }
 
     if (result.pushed > 0 && !CONFIG.DRY_RUN) {
         await markSeenToday(uid, statusKey);
-        await writePushLog(uid, module, result, count, statusKey, slotHour);
+        await writePushLog(uid, module, result, count, statusKey, slotHour, deviceResults);
     }
 
     return result;
@@ -1507,25 +1519,32 @@ async function sendTaskReminderToUser(uid, today, subscriptions) {
         return result;
     }
 
+    // Track per-device results for task reminder
+    const deviceResults = [];
     for (const sub of subscriptions) {
         const payload = buildTaskReminderPayload(statusKey, pendingTasks, uid, sub.deviceName);
+        const dName   = sub.deviceName || 'Unknown Device';
 
         if (CONFIG.DRY_RUN) {
             logger.info('🧪 DRY RUN: would send task reminder', {
-                uid, device: sub.deviceName, taskCount: pendingTasks.length,
+                uid, device: dName, taskCount: pendingTasks.length,
             });
             result.pushed++;
+            deviceResults.push({ name: dName, status: 'sent' });
             continue;
         }
 
         const res = await sendWebPushWithRetry(sub, payload);
         if (res.success) {
             result.pushed++;
+            deviceResults.push({ name: dName, status: 'sent' });
         } else if (res.expired) {
             result.expiredEndpoints.push(res.endpoint);
             result.errors++;
+            deviceResults.push({ name: dName, status: 'failed' });
         } else {
             result.errors++;
+            deviceResults.push({ name: dName, status: 'failed' });
         }
     }
 
@@ -1538,7 +1557,7 @@ async function sendTaskReminderToUser(uid, today, subscriptions) {
             title:         'টাস্ক ম্যানেজার',
             isTaskReminder: true,
         };
-        await writePushLog(uid, taskModule, result, pendingTasks.length, statusKey, 10);
+        await writePushLog(uid, taskModule, result, pendingTasks.length, statusKey, 10, deviceResults);
     }
 
     return result;
