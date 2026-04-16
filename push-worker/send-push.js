@@ -1,12 +1,56 @@
 /**
  * ============================================================
- * push-worker/send-push.js  —  v5.5
+ * push-worker/send-push.js  —  v5.7
  * Standalone Push Notification Worker for GitHub Actions
  * Project : অফিস ম্যানেজমেন্ট সিস্টেম
  *
- * WHAT CHANGED in v5.5:
+ * WHAT CHANGED in v5.7:
  *
- *   BUG FIXES from v5.4:
+ *   [Fix A] Hard-filter malformed push subscriptions.
+ *     Previously: if a stored subscription document was missing `keys.p256dh`
+ *     or `keys.auth` (docs written before the JSON-serialise bug-fix), the code
+ *     logged a warning and still attempted delivery. web-push then threw a
+ *     crypto error every time, marking the device as failed silently with no
+ *     visible explanation. This is likely the root cause of most push delivery
+ *     failures reported in the field.
+ *     Now: getUserSubscriptions() hard-filters any document missing keys,
+ *     keys.p256dh, or keys.auth. A detailed warning is logged explaining that
+ *     the user must re-enable push notifications in their browser to generate a
+ *     fresh, well-formed subscription document.
+ *
+ *   [Fix B] Write a skipped log when no valid subscriptions exist.
+ *     Previously: if a user had zero valid subscriptions (e.g. all were
+ *     filtered out by Fix A), nothing was written to Firestore — so the
+ *     notification-log page showed a blank / missing entry with no explanation.
+ *     Now: a `status: 'skipped'` log entry is written for each module in the
+ *     current slot. The detail field reads "কোনো বৈধ পুশ সাবস্ক্রিপশন নেই —
+ *     ব্রাউজারে পুনরায় পুশ চালু করুন", making the reason visible in the UI.
+ *
+ *   UNCHANGED from v5.6:
+ *     All v5.6 fixes (timing / :55-cron slot resolution) are preserved.
+ *
+ *     push-notify.yml now fires 9 individual crons at :55 of the
+ *     preceding UTC hour (e.g. UTC 03:55 for the Dhaka 10:00 slot)
+ *     instead of a single combined expression at :00.  This guards
+ *     against GitHub's peak-congestion delay pushing a run past the
+ *     :10 mark and causing the wrong slot (or no slot) to fire.
+ *
+ *     Added resolveSlotHour(dhakaHour):
+ *       Checks HOUR_SCHEDULE[dhakaHour] first, then
+ *       HOUR_SCHEDULE[(dhakaHour+1) % 24], returning the first
+ *       matching key.  This means a runner that starts at Dhaka
+ *       09:58 (dhakaHour=9, cron-fire hour) AND one that starts at
+ *       Dhaka 10:02 (dhakaHour=10, post-boundary) both resolve to
+ *       slot hour 10 — exactly the "3|4)" pattern in send-email.yml.
+ *
+ *     runPushWorker() now derives hasSlot and effectiveHour from
+ *     resolveSlotHour() rather than a bare HOUR_SCHEDULE[dhakaHour]
+ *     lookup, so both the :55 and :00 arrival times are handled.
+ *
+ *   UNCHANGED from v5.5:
+ *     All v5.5 fixes (FIX-22) and earlier are preserved.
+ *     Cron schedule, payload builders, retry logic, and
+ *     subscription cleanup are unchanged.
  *     [FIX-22] CRITICAL — premium-submit showed "০ টি প্রিমিয়াম এন্ট্রি"
  *              (confirmed in the Firestore push notification screenshot).
  *              The worker queried 5 non-existent collections:
@@ -727,6 +771,26 @@ function getDhakaHour() {
     return (utcHour + 6) % 24;
 }
 
+/**
+ * Resolve which HOUR_SCHEDULE slot to run for the given Dhaka hour.
+ *
+ * Each cron fires at :55 of the preceding UTC hour (e.g. UTC 03:55 for the
+ * Dhaka 10:00 slot).  If the runner starts before the :00 boundary the Dhaka
+ * hour will be 9 (the cron-fire hour), not 10 (the target slot hour).
+ * If it starts after the :00 boundary it will be 10.
+ *
+ * We therefore check BOTH dhakaHour AND dhakaHour+1 as valid keys,
+ * mirroring the "3|4)" case pattern in send-email.yml.
+ *
+ * Returns the matching HOUR_SCHEDULE key, or null if neither hour has a slot.
+ */
+function resolveSlotHour(dhakaHour) {
+    if (HOUR_SCHEDULE[dhakaHour])           return dhakaHour;
+    const nextHour = (dhakaHour + 1) % 24;
+    if (HOUR_SCHEDULE[nextHour])            return nextHour;
+    return null;
+}
+
 /** Today's date string in Dhaka time (YYYY-MM-DD). */
 function getTodayDhaka() {
     const dhaka = new Date(Date.now() + 6 * 3600 * 1000);
@@ -1384,15 +1448,22 @@ async function getUserSubscriptions(uid) {
                 logger.warn('Subscription missing endpoint — skipping', { uid, docId: s._docId });
                 continue;
             }
-            // FIX: Previously `!s.keys` silently dropped subscriptions where the
-            // keys field was missing (e.g. docs saved before the JSON-serialise fix),
-            // causing ALL pushes to fail silently for that user.
-            // Now we log the problem and still attempt delivery — web-push will
-            // surface a clear error if keys are genuinely malformed.
-            if (!s.keys) {
-                logger.warn('Subscription missing keys field — attempting delivery anyway', {
-                    uid, docId: s._docId, endpoint: s.endpoint.slice(0, 40)
+            // Fix A: Hard-filter subscriptions that are missing keys.p256dh or keys.auth.
+            // Docs saved before the JSON-serialise bug-fix have no `keys` object at all.
+            // Attempting delivery on these causes web-push to throw a crypto error every
+            // time, which silently marks the device as failed without explaining why.
+            // The only remedy is for the user to re-enable push notifications in their
+            // browser so a fresh, well-formed subscription is written to Firestore.
+            if (!s.keys || !s.keys.p256dh || !s.keys.auth) {
+                logger.warn('Subscription missing keys.p256dh / keys.auth — SKIPPING. ' +
+                    'User must re-enable push notifications in browser to fix.', {
+                    uid, docId: s._docId,
+                    hasKeys:    !!s.keys,
+                    hasP256dh:  !!(s.keys && s.keys.p256dh),
+                    hasAuth:    !!(s.keys && s.keys.auth),
+                    endpoint:   s.endpoint.slice(0, 40),
                 });
+                continue;
             }
             const { _docId, ...subData } = s;
             valid.push(subData);
@@ -1579,7 +1650,36 @@ async function processUserAtHour(uid, dhakaHour, today) {
 
     const subscriptions = await getUserSubscriptions(uid);
     if (subscriptions.length === 0) {
-        logger.debug('No push subscriptions for user', { uid });
+        logger.debug('No valid push subscriptions for user', { uid });
+        // Fix B: Write a skipped log entry for every module in this slot so the
+        // notification-log page shows WHY nothing was delivered (instead of a
+        // blank / missing entry that gives no clue).
+        for (const module of modules) {
+            try {
+                await getDB()
+                    .collection(`artifacts/default-app-id/users/${uid}/pushLogs`)
+                    .add({
+                        tag:       module.tag,
+                        label:     module.title || module.tag,
+                        icon:      module.icon  || '🔔',
+                        status:    'skipped',
+                        sentAt:    admin.firestore.FieldValue.serverTimestamp(),
+                        detail:    'কোনো বৈধ পুশ সাবস্ক্রিপশন নেই — ব্রাউজারে পুনরায় পুশ চালু করুন',
+                        sent:      0,
+                        failed:    0,
+                        skipped:   1,
+                        slotHour:  dhakaHour,
+                        statusKey: buildStatusKey(module.tag, null),
+                        runId:     CONFIG.RUN_ID,
+                        recordCount: null,
+                        devices:   [],
+                    });
+            } catch (logErr) {
+                logger.warn('Failed to write skipped log for module', {
+                    uid, tag: module.tag, error: logErr.message,
+                });
+            }
+        }
         stats.skipped += modules.length;
         return stats;
     }
@@ -1617,7 +1717,12 @@ async function runPushWorker() {
     const dhakaHour  = getDhakaHour();
     const today      = getTodayDhaka();
     const isActive   = dhakaHour >= CONFIG.ACTIVE_HOUR_START && dhakaHour < CONFIG.ACTIVE_HOUR_END;
-    const hasSlot    = !!HOUR_SCHEDULE[dhakaHour];
+    // Resolve effective slot: crons fire at :55 so dhakaHour may be the preceding
+    // hour (e.g. 9) rather than the target slot hour (10).  resolveSlotHour()
+    // checks dhakaHour first, then dhakaHour+1, matching the "hour|hour+1"
+    // pattern used by push-notify.yml's case statement.
+    const resolvedSlot = resolveSlotHour(dhakaHour);
+    const hasSlot    = resolvedSlot !== null;
 
     // Auto-enable RESET_SEEN_TODAY for manual triggers and force_send runs
     // so testing always fires real pushes without needing to manually clear
@@ -1669,15 +1774,17 @@ async function runPushWorker() {
         slotsToRun = Object.keys(HOUR_SCHEDULE).map(Number).sort((a, b) => a - b);
         logger.info(`📋 Manual trigger: running ALL ${slotsToRun.length} slots → [${slotsToRun.join(', ')}]`);
     } else {
-        // Cron or force_send → single effective hour
-        const effectiveHour = hasSlot ? dhakaHour : (() => {
+        // Cron or force_send → single effective hour.
+        // resolvedSlot already accounts for the :55 offset (dhakaHour may be
+        // one less than the target slot when the runner starts before :00).
+        const effectiveHour = resolvedSlot ?? (() => {
             const slots   = Object.keys(HOUR_SCHEDULE).map(Number).sort((a, b) => a - b);
             const earlier = slots.filter(h => h <= dhakaHour);
             return earlier.length ? earlier[earlier.length - 1] : slots[0];
         })();
 
         if (effectiveHour !== dhakaHour) {
-            logger.info(`Force/cron: using nearest earlier slot (hour ${effectiveHour})`);
+            logger.info(`Force/cron: using resolved slot (hour ${effectiveHour}) for Dhaka hour ${dhakaHour}`);
         }
         slotsToRun = [effectiveHour];
     }
@@ -1773,7 +1880,7 @@ async function runPushWorker() {
 (async () => {
     try {
         logger.info('═══════════════════════════════════════════════════════════');
-        logger.info('   অফিস ম্যানেজমেন্ট সিস্টেম — Push Notification Worker v5.5');
+        logger.info('   অফিস ম্যানেজমেন্ট সিস্টেম — Push Notification Worker v5.7');
         logger.info('═══════════════════════════════════════════════════════════');
 
         initializeFirebase();
