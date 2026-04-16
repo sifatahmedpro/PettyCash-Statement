@@ -36,8 +36,8 @@
  *   artifacts/default-app-id/users/{uid}/data/emailSubscription
  *
  * TO ADD TO ANY HTML PAGE:
- *   <script src="firebase-config.js"></script>
- *   <script type="module" src="email-backend.js"></script>
+ *   <script src="../js/common/firebase-config.js"></script>
+ *   <script type="module" src="../js/email/email-backend.js"></script>
  * ============================================================
  */
 
