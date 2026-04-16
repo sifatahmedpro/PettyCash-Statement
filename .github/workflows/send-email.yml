@@ -1,5 +1,5 @@
 # ============================================================
-# .github/workflows/send-email.yml  —  v3.0 (SCHEDULED PER-PAGE)
+# .github/workflows/send-email.yml  —  v3.1 (SCHEDULED PER-PAGE)
 #
 # SCHEDULE (Dhaka UTC+6 → subtract 6 for UTC):
 #   Crons fire at :55 of the preceding UTC hour to beat GitHub's
@@ -16,6 +16,11 @@
 #
 # The PAGE environment variable tells send-email.js which
 # single page to process in each run.
+#
+# FIX (v3.1): Each case now matches BOTH the cron-fire hour (:55)
+#   AND the following hour (:00+) to handle the race where
+#   checkout + npm install finishes after the minute rolls over.
+#   e.g. cron fires at 03:55 UTC, but date runs at 04:01 → matches "3|4".
 #
 # HOW TO SET UP:
 #   GitHub repo → Settings → Secrets and variables → Actions
@@ -70,6 +75,11 @@ jobs:
         run: |
           # If manually triggered with a page input, use it.
           # Otherwise derive from current UTC hour (each cron has a unique hour).
+          #
+          # Each case matches TWO hours: the cron-fire hour (e.g. 3 for 03:55)
+          # AND the following hour (e.g. 4 for 04:01) so that a slow runner
+          # that crosses the :00 boundary still resolves the correct page
+          # instead of silently falling through to the default.
           INPUT_PAGE="${{ github.event.inputs.page }}"
           UTC_HOUR=$(date -u +"%H" | sed 's/^0*//')   # strip leading zero → plain int
 
@@ -77,13 +87,14 @@ jobs:
             echo "PAGE=$INPUT_PAGE" >> $GITHUB_OUTPUT
           else
             case "$UTC_HOUR" in
-              4)  echo "PAGE=help"             >> $GITHUB_OUTPUT ;;
-              6)  echo "PAGE=office_issue"     >> $GITHUB_OUTPUT ;;
-              8)  echo "PAGE=business_stats"   >> $GITHUB_OUTPUT ;;
-              10) echo "PAGE=premium_submit"   >> $GITHUB_OUTPUT ;;
-              12) echo "PAGE=advance_payment"  >> $GITHUB_OUTPUT ;;
-              14) echo "PAGE=donation"         >> $GITHUB_OUTPUT ;;
-              *)  echo "PAGE=help"             >> $GITHUB_OUTPUT ;;
+              3|4)   echo "PAGE=help"             >> $GITHUB_OUTPUT ;;
+              5|6)   echo "PAGE=office_issue"     >> $GITHUB_OUTPUT ;;
+              7|8)   echo "PAGE=business_stats"   >> $GITHUB_OUTPUT ;;
+              9|10)  echo "PAGE=premium_submit"   >> $GITHUB_OUTPUT ;;
+              11|12) echo "PAGE=advance_payment"  >> $GITHUB_OUTPUT ;;
+              13|14) echo "PAGE=donation"         >> $GITHUB_OUTPUT ;;
+              *)     echo "⚠️  Unrecognised UTC hour ($UTC_HOUR) — falling back to help" >&2
+                     echo "PAGE=help"             >> $GITHUB_OUTPUT ;;
             esac
           fi
 
