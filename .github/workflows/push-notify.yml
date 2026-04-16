@@ -1,5 +1,5 @@
 ## ============================================================
-## .github/workflows/push-notify.yml  —  v5.0
+## .github/workflows/push-notify.yml  —  v5.1
 ## Web Push Notification Workflow
 ## Project : অফিস ম্যানেজমেন্ট সিস্টেম
 ##
@@ -9,15 +9,22 @@
 ##   Silent window: 23:00–06:00 Dhaka (no runs at all).
 ##
 ## SCHEDULE (Dhaka = UTC+6):
-##   Dhaka  06:00 → UTC 00:00 — advance-payment, manpower, policy-files
-##   Dhaka  08:00 → UTC 02:00 — fund-archive, hbl-recovery, vat-tax
-##   Dhaka  10:00 → UTC 04:00 — task-manager, office-issue, notesheet
-##   Dhaka  12:00 → UTC 06:00 — lunch-allowance, transport-bill, business-stats
-##   Dhaka  14:00 → UTC 08:00 — various-calculators, stationary-item, medical-bill
-##   Dhaka  16:00 → UTC 10:00 — ta-bill, license-forwarding, premium-submit
-##   Dhaka  18:00 → UTC 12:00 — personal-dues, personal-expense
-##   Dhaka  20:00 → UTC 14:00 — donation, help, help-requisition
-##   Dhaka  22:00 → UTC 16:00 — proposal-index, fpr-register, license-archive
+##   Crons fire at :55 of the preceding UTC hour to beat GitHub's
+##   peak-congestion delay and arrive on time in Dhaka.
+##   Each cron fires 5 minutes early; send-push.js reads the actual
+##   Dhaka hour at runtime and accepts BOTH the cron-fire hour AND
+##   the following hour (hour|hour+1) so a slow runner that crosses
+##   the :00 boundary still resolves the correct slot.
+##
+##   Dhaka  06:00 → cron UTC 23:55 (prev day) — advance-payment, manpower, policy-files
+##   Dhaka  08:00 → cron UTC 01:55            — fund-archive, hbl-recovery, vat-tax
+##   Dhaka  10:00 → cron UTC 03:55            — task-manager, office-issue, notesheet
+##   Dhaka  12:00 → cron UTC 05:55            — lunch-allowance, transport-bill, business-stats
+##   Dhaka  14:00 → cron UTC 07:55            — various-calculators, stationary-item, medical-bill
+##   Dhaka  16:00 → cron UTC 09:55            — ta-bill, license-forwarding, premium-submit
+##   Dhaka  18:00 → cron UTC 11:55            — personal-dues, personal-expense
+##   Dhaka  20:00 → cron UTC 13:55            — donation, help, help-requisition
+##   Dhaka  22:00 → cron UTC 15:55            — proposal-index, fpr-register, license-archive
 ##
 ## WHAT CHANGED in v5.0:
 ##   - Manual trigger (workflow_dispatch) now runs ALL 9 slots in
@@ -84,17 +91,29 @@ name: Web Push Notifications
 
 on:
   schedule:
-    ## 9 exact UTC hours = 9 Dhaka module slots (UTC+6):
-    ##   UTC 00 → Dhaka 06  advance-payment, manpower, policy-files
-    ##   UTC 02 → Dhaka 08  fund-archive, hbl-recovery, vat-tax
-    ##   UTC 04 → Dhaka 10  task-manager, office-issue, notesheet
-    ##   UTC 06 → Dhaka 12  lunch-allowance, transport-bill, business-stats
-    ##   UTC 08 → Dhaka 14  various-calculators, stationary-item, medical-bill
-    ##   UTC 10 → Dhaka 16  ta-bill, license-forwarding, premium-submit
-    ##   UTC 12 → Dhaka 18  personal-dues, personal-expense
-    ##   UTC 14 → Dhaka 20  donation, help, help-requisition
-    ##   UTC 16 → Dhaka 22  proposal-index, fpr-register, license-archive
-    - cron: '0 0,2,4,6,8,10,12,14,16 * * *'
+    ## Each cron fires at :55 of the preceding UTC hour so the runner
+    ## reaches send-push.js before the target Dhaka hour.  The script
+    ## matches BOTH the cron-fire hour AND the following hour (see the
+    ## "Check Dhaka time" step) to handle runners that cross :00.
+    ##
+    ##   cron UTC 23:55 → Dhaka 05:55 → slot Dhaka 06  advance-payment, manpower, policy-files
+    ##   cron UTC 01:55 → Dhaka 07:55 → slot Dhaka 08  fund-archive, hbl-recovery, vat-tax
+    ##   cron UTC 03:55 → Dhaka 09:55 → slot Dhaka 10  task-manager, office-issue, notesheet
+    ##   cron UTC 05:55 → Dhaka 11:55 → slot Dhaka 12  lunch-allowance, transport-bill, business-stats
+    ##   cron UTC 07:55 → Dhaka 13:55 → slot Dhaka 14  various-calculators, stationary-item, medical-bill
+    ##   cron UTC 09:55 → Dhaka 15:55 → slot Dhaka 16  ta-bill, license-forwarding, premium-submit
+    ##   cron UTC 11:55 → Dhaka 17:55 → slot Dhaka 18  personal-dues, personal-expense
+    ##   cron UTC 13:55 → Dhaka 19:55 → slot Dhaka 20  donation, help, help-requisition
+    ##   cron UTC 15:55 → Dhaka 21:55 → slot Dhaka 22  proposal-index, fpr-register, license-archive
+    - cron: '55 23 * * *'   # Dhaka 06:00 → advance-payment · manpower · policy-files
+    - cron: '55 1  * * *'   # Dhaka 08:00 → fund-archive · hbl-recovery · vat-tax
+    - cron: '55 3  * * *'   # Dhaka 10:00 → task-manager · office-issue · notesheet
+    - cron: '55 5  * * *'   # Dhaka 12:00 → lunch-allowance · transport-bill · business-stats
+    - cron: '55 7  * * *'   # Dhaka 14:00 → various-calculators · stationary-item · medical-bill
+    - cron: '55 9  * * *'   # Dhaka 16:00 → ta-bill · license-forwarding · premium-submit
+    - cron: '55 11 * * *'   # Dhaka 18:00 → personal-dues · personal-expense
+    - cron: '55 13 * * *'   # Dhaka 20:00 → donation · help · help-requisition
+    - cron: '55 15 * * *'   # Dhaka 22:00 → proposal-index · fpr-register · license-archive
 
   ## Manual trigger from Actions tab for testing
   workflow_dispatch:
@@ -200,18 +219,21 @@ jobs:
           utc_hour=$(date -u +%H | sed 's/^0//')   # strip leading zero → integer
           dhaka_hour=$(( (utc_hour + 6) % 24 ))
 
-          ## Determine slot name for logging (mirrors HOUR_SCHEDULE in send-push.js)
+          ## Each case matches TWO Dhaka hours: the cron-fire hour (e.g. 5 for UTC 23:55→Dhaka 05:55)
+          ## AND the target slot hour (e.g. 6 for Dhaka 06:00) so that a slow runner
+          ## that crosses the :00 boundary still resolves the correct slot.
+          ## e.g. cron fires at UTC 23:55 (Dhaka 05:55) but date runs at Dhaka 06:01 → matches "5|6".
           case $dhaka_hour in
-            6)  slot_name="advance-payment · manpower · policy-files" ;;
-            8)  slot_name="fund-archive · hbl-recovery · vat-tax" ;;
-            10) slot_name="task-manager · office-issue · notesheet" ;;
-            12) slot_name="lunch-allowance · transport-bill · business-stats" ;;
-            14) slot_name="various-calculators · stationary-item · medical-bill" ;;
-            16) slot_name="ta-bill · license-forwarding · premium-submit" ;;
-            18) slot_name="personal-dues · personal-expense" ;;
-            20) slot_name="donation · help · help-requisition" ;;
-            22) slot_name="proposal-index · fpr-register · license-archive" ;;
-            *)  slot_name="(no scheduled slot — force_send or manual trigger required)" ;;
+            5|6)   slot_name="advance-payment · manpower · policy-files" ;;
+            7|8)   slot_name="fund-archive · hbl-recovery · vat-tax" ;;
+            9|10)  slot_name="task-manager · office-issue · notesheet" ;;
+            11|12) slot_name="lunch-allowance · transport-bill · business-stats" ;;
+            13|14) slot_name="various-calculators · stationary-item · medical-bill" ;;
+            15|16) slot_name="ta-bill · license-forwarding · premium-submit" ;;
+            17|18) slot_name="personal-dues · personal-expense" ;;
+            19|20) slot_name="donation · help · help-requisition" ;;
+            21|22) slot_name="proposal-index · fpr-register · license-archive" ;;
+            *)     slot_name="(no scheduled slot — force_send or manual trigger required)" ;;
           esac
 
           ## Active = 06:00–23:00 Dhaka
@@ -310,15 +332,15 @@ jobs:
           echo "## Schedule reference"                         >> $GITHUB_STEP_SUMMARY
           echo "| Dhaka time | UTC cron | Modules |"           >> $GITHUB_STEP_SUMMARY
           echo "|---|---|---|"                                  >> $GITHUB_STEP_SUMMARY
-          echo "| 06:00 | 00:00 | advance-payment · manpower · policy-files |"            >> $GITHUB_STEP_SUMMARY
-          echo "| 08:00 | 02:00 | fund-archive · hbl-recovery · vat-tax |"                >> $GITHUB_STEP_SUMMARY
-          echo "| 10:00 | 04:00 | task-manager · office-issue · notesheet |"              >> $GITHUB_STEP_SUMMARY
-          echo "| 12:00 | 06:00 | lunch-allowance · transport-bill · business-stats |"    >> $GITHUB_STEP_SUMMARY
-          echo "| 14:00 | 08:00 | various-calculators · stationary-item · medical-bill |" >> $GITHUB_STEP_SUMMARY
-          echo "| 16:00 | 10:00 | ta-bill · license-forwarding · premium-submit |"        >> $GITHUB_STEP_SUMMARY
-          echo "| 18:00 | 12:00 | personal-dues · personal-expense |"                     >> $GITHUB_STEP_SUMMARY
-          echo "| 20:00 | 14:00 | donation · help · help-requisition |"                       >> $GITHUB_STEP_SUMMARY
-          echo "| 22:00 | 16:00 | proposal-index · fpr-register · license-archive |"      >> $GITHUB_STEP_SUMMARY
+          echo "| 06:00 | 23:55 (prev day) | advance-payment · manpower · policy-files |"            >> $GITHUB_STEP_SUMMARY
+          echo "| 08:00 | 01:55 | fund-archive · hbl-recovery · vat-tax |"                >> $GITHUB_STEP_SUMMARY
+          echo "| 10:00 | 03:55 | task-manager · office-issue · notesheet |"              >> $GITHUB_STEP_SUMMARY
+          echo "| 12:00 | 05:55 | lunch-allowance · transport-bill · business-stats |"    >> $GITHUB_STEP_SUMMARY
+          echo "| 14:00 | 07:55 | various-calculators · stationary-item · medical-bill |" >> $GITHUB_STEP_SUMMARY
+          echo "| 16:00 | 09:55 | ta-bill · license-forwarding · premium-submit |"        >> $GITHUB_STEP_SUMMARY
+          echo "| 18:00 | 11:55 | personal-dues · personal-expense |"                     >> $GITHUB_STEP_SUMMARY
+          echo "| 20:00 | 13:55 | donation · help · help-requisition |"                       >> $GITHUB_STEP_SUMMARY
+          echo "| 22:00 | 15:55 | proposal-index · fpr-register · license-archive |"      >> $GITHUB_STEP_SUMMARY
           echo ""                                               >> $GITHUB_STEP_SUMMARY
 
           echo "## Result"                                     >> $GITHUB_STEP_SUMMARY
