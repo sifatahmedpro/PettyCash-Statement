@@ -19,7 +19,7 @@
  *
  * TO ADD TO ANY HTML PAGE:
  *   <!-- after firebase-config.js, app-backend.js, email-backend.js -->
- *   <script type="module" src="email-ui.js"></script>
+ *   <script type="module" src="../js/email/email-ui.js"></script>
  *
  *   Then place a mount point anywhere in your HTML:
  *   <div id="email-notif-widget"></div>
@@ -569,6 +569,7 @@ function _wireEvents(container, uid, currentEmail) {
                 pages:   pages
             };
 
+            const originalLabel = saveBtn.textContent; // preserve 'সাবস্ক্রাইব করুন' vs 'আপডেট করুন'
             saveBtn.disabled    = true;
             saveBtn.textContent = 'সেভ হচ্ছে...';
 
@@ -580,7 +581,7 @@ function _wireEvents(container, uid, currentEmail) {
                 console.error('EmailUI save error:', err);
                 _showToast('❌ সেভ করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।', 'err');
                 saveBtn.disabled    = false;
-                saveBtn.textContent = 'সাবস্ক্রাইব করুন';
+                saveBtn.textContent = originalLabel; // restore correct label for both new and existing subscribers
             }
         });
     }
