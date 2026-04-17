@@ -1,91 +1,4 @@
-## ============================================================
-## .github/workflows/push-notify.yml  —  v5.1
-## Web Push Notification Workflow
-## Project : অফিস ম্যানেজমেন্ট সিস্টেম
-##
-## PURPOSE:
-##   Fires at 9 fixed Dhaka times per day to send scheduled
-##   module reminder push notifications to all subscribed users.
-##   Silent window: 23:00–06:00 Dhaka (no runs at all).
-##
-## SCHEDULE (Dhaka = UTC+6):
-##   Crons fire at :55 of the preceding UTC hour to beat GitHub's
-##   peak-congestion delay and arrive on time in Dhaka.
-##   Each cron fires 5 minutes early; send-push.js reads the actual
-##   Dhaka hour at runtime and accepts BOTH the cron-fire hour AND
-##   the following hour (hour|hour+1) so a slow runner that crosses
-##   the :00 boundary still resolves the correct slot.
-##
-##   Dhaka  06:00 → cron UTC 23:55 (prev day) — advance-payment, manpower, policy-files
-##   Dhaka  08:00 → cron UTC 01:55            — fund-archive, hbl-recovery, vat-tax
-##   Dhaka  10:00 → cron UTC 03:55            — task-manager, office-issue, notesheet
-##   Dhaka  12:00 → cron UTC 05:55            — lunch-allowance, transport-bill, business-stats
-##   Dhaka  14:00 → cron UTC 07:55            — various-calculators, stationary-item, medical-bill
-##   Dhaka  16:00 → cron UTC 09:55            — ta-bill, license-forwarding, premium-submit
-##   Dhaka  18:00 → cron UTC 11:55            — personal-dues, personal-expense
-##   Dhaka  20:00 → cron UTC 13:55            — donation, help, help-requisition
-##   Dhaka  22:00 → cron UTC 15:55            — proposal-index, fpr-register, license-archive
-##
-## WHAT CHANGED in v5.0:
-##   - Manual trigger (workflow_dispatch) now runs ALL 9 slots in
-##     one go, so every module fires when you press "Run workflow".
-##     Previously it only ran the nearest earlier slot, causing
-##     most modules to appear broken during testing.
-##   - RESET_SEEN_TODAY is now auto-enabled for all manual and
-##     force_send runs. This clears the per-user "seen today"
-##     deduplication state so that modules already sent today
-##     are not silently skipped during re-runs or testing.
-##   - New workflow_dispatch input: reset_seen_today
-##     Can be set to true on cron runs too if needed.
-##   - send-push.js v5.0 required.
-##
-## MANUAL TRIGGER BEHAVIOUR (workflow_dispatch):
-##   Default (no inputs)    → runs ALL 9 slots, resets seen-today
-##   force_send=true        → runs nearest-earlier slot only,
-##                            resets seen-today
-##   dry_run=true           → shows what would be sent, no pushes
-##   reset_seen_today=true  → explicit state reset (also auto-set
-##                            for manual / force_send runs)
-##
-## TIME ZONE NOTE:
-##   Cron runs on UTC. Dhaka = UTC+6.
-##   GitHub Actions can delay up to ~10 min past the scheduled
-##   minute. send-push.js reads the actual Dhaka hour at runtime
-##   and is the authoritative source for which slot to run.
-##   The workflow cron just determines when the runner wakes up.
-##
-## SETUP INSTRUCTIONS:
-##   1. Go to GitHub repo → Settings → Secrets and variables → Actions
-##   2. Add these Repository Secrets:
-##      - FIREBASE_PROJECT_ID       (your Firebase project ID)
-##      - FIREBASE_CLIENT_EMAIL     (service account email)
-##      - FIREBASE_PRIVATE_KEY      (service account private key, paste as-is)
-##      - FIREBASE_API_KEY          (Firebase Web API key)
-##      - VAPID_PUBLIC_KEY          (Web Push VAPID public key)
-##      - VAPID_PRIVATE_KEY         (Web Push VAPID private key)
-##      - VAPID_SUBJECT             (mailto:your-email@example.com)
-##      - FAILURE_NOTIFY_EMAIL      (optional: where to send error emails)
-##      - SLACK_WEBHOOK_URL         (optional: Slack failure alerts)
-##      - MAIL_SERVER / MAIL_PORT / MAIL_USERNAME / MAIL_PASSWORD
-##                                  (optional: email failure alerts)
-##
-##   3. Place push-worker/send-push.js   (v5.0)
-##   4. Place push-worker/package.json   (firebase-admin + web-push)
-##   5. Run `npm install` locally → commit package-lock.json
-##   6. Push to GitHub — workflow activates automatically
-##
-## TESTING:
-##   - Manual trigger: Actions tab → "Web Push Notifications" → "Run workflow"
-##     (no inputs needed — fires all 9 slots automatically)
-##   - Use dry_run=true to verify routing without sending real pushes
-##   - Use force_send=true to test a single slot (nearest earlier)
-##   - Logs: Actions tab → select run → expand each step
-##
-## MONITORING:
-##   - Each run posts a summary to the Actions "Summary" tab
-##   - Failed runs show ❌ with full error output
-##   - Successful runs show ✅ with slot name + push count
-## ============================================================
+
 
 name: Web Push Notifications
 
@@ -236,13 +149,15 @@ jobs:
             *)     slot_name="(no scheduled slot — force_send or manual trigger required)" ;;
           esac
 
-          ## Active = 06:00–23:00 Dhaka
-          if [ $dhaka_hour -ge 6 ] && [ $dhaka_hour -lt 23 ]; then
+          ## Active = 06:00–24:00 Dhaka (ACTIVE_HOUR_END=24 in send-push.js CONFIG;
+          ## the 22:00 slot cron fires at UTC 15:55 → Dhaka 21:55/22:xx, so
+          ## hours 22 and 23 must be treated as active here too).
+          if [ $dhaka_hour -ge 6 ] && [ $dhaka_hour -lt 24 ]; then
             is_active="true"
             status="🟢 Active"
           else
             is_active="false"
-            status="🔴 Resting (23:00–06:00 Dhaka)"
+            status="🔴 Resting (00:00–06:00 Dhaka)"
           fi
 
           echo "is_active=$is_active"   >> $GITHUB_OUTPUT
@@ -274,7 +189,7 @@ jobs:
           GITHUB_ACTOR:          ${{ github.actor }}
           IS_MANUAL_TRIGGER:     ${{ github.event_name == 'workflow_dispatch' }}
         run: |
-          echo "🚀 Starting push notification worker (v5.0)..."
+          echo "🚀 Starting push notification worker (v5.8)..."
           echo ""
           echo "Run information:"
           echo "  Run ID:         $RUN_ID"
