@@ -1,36 +1,4 @@
-# ============================================================
-# .github/workflows/send-email.yml  —  v3.1 (SCHEDULED PER-PAGE)
-#
-# SCHEDULE (Dhaka UTC+6 → subtract 6 for UTC):
-#   Crons fire at :55 of the preceding UTC hour to beat GitHub's
-#   peak-congestion delay and arrive on time in Dhaka.
-#
-#    9:55 AM Dhaka = 03:55 UTC  → Help (টাস্ক তালিকা)        arrives ~10:00 AM
-#   11:55 AM Dhaka = 05:55 UTC  → Office Issue (সমস্যা ও সমাধান) arrives ~12:00 PM
-#    1:55 PM Dhaka = 07:55 UTC  → Business Stats (ব্যবসা পরিসংখ্যান) arrives ~2:00 PM
-#    3:55 PM Dhaka = 09:55 UTC  → Premium Submit (প্রিমিয়াম জমা) arrives ~4:00 PM
-#    5:55 PM Dhaka = 11:55 UTC  → Advance Payment (অগ্রিম পরিশোধ) arrives ~6:00 PM
-#    7:55 PM Dhaka = 13:55 UTC  → Donation (অনুদান)           arrives ~8:00 PM
-#
-#   SILENT HOURS: 10 PM – 10 AM Dhaka (no emails sent)
-#
-# The PAGE environment variable tells send-email.js which
-# single page to process in each run.
-#
-# FIX (v3.1): Each case now matches BOTH the cron-fire hour (:55)
-#   AND the following hour (:00+) to handle the race where
-#   checkout + npm install finishes after the minute rolls over.
-#   e.g. cron fires at 03:55 UTC, but date runs at 04:01 → matches "3|4".
-#
-# HOW TO SET UP:
-#   GitHub repo → Settings → Secrets and variables → Actions
-#   Add these Repository Secrets:
-#     - FIREBASE_PROJECT_ID
-#     - FIREBASE_CLIENT_EMAIL
-#     - FIREBASE_PRIVATE_KEY
-#     - GMAIL_USER            ← your Gmail address
-#     - GMAIL_APP_PASSWORD    ← 16-character App Password from Google
-# ============================================================
+
 
 name: Email Digest
 
