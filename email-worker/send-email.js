@@ -1,34 +1,34 @@
 /**
  * ============================================================
- * email-worker/send-email.js  —  v5.0 (SINGLE-PAGE-PER-RUN)
+ * email-worker/send-email.js  —  v5.1 (BUG-FIX RELEASE)
  *
- * WHAT CHANGED vs v4:
- *   1. SINGLE PAGE PER RUN — reads TARGET_PAGE env variable set
- *      by the GitHub Actions workflow step. Each cron job sends
- *      exactly one page email instead of all six.
+ * WHAT CHANGED vs v5.0:
  *
- *   2. CORRECT FIRESTORE PATHS — all 6 fetchers now use the
- *      exact collection names the app modules write to:
- *        advance_payments        (was: payments)
- *        donations               (correct)
- *        tasks                   (correct)
- *        office_issues           (was: issues)
- *        business_analysis_archives (was: businessStats)
- *        accounts_1st_year / accounts_renewal / accounts_deferred
- *        accounts_mr / accounts_loan (was: premiumStatements)
+ *   [FIX 1] CRITICAL — fetchPremiumStatements() collection mismatch.
+ *     v5.0 queried accounts_1st_year / accounts_renewal / accounts_deferred /
+ *     accounts_mr / accounts_loan — none of which exist in Firestore.
+ *     The push worker (FIX-22 in send-push.js v5.7) confirmed the real
+ *     collections are 'accounts' (active) and 'accountsArchive_1st_year'
+ *     (archived). The 4 PM "প্রিমিয়াম জমা" slot now queries those two.
  *
- *   3. CORRECT FIELD NAMES — business stats uses meta.reportDate,
- *      meta.inchargeName, createdAt. Premium uses
- *      amount / deposit / balance / slipNo / date / type.
+ *   [FIX 4] WARNING — getTargetPage() silent null on odd-hour runner.
+ *     The hour-map only matched even hours (10,12,14,16,18,20). A GitHub
+ *     runner delayed past the :05 mark could start at an odd Dhaka hour
+ *     (e.g. 11, 13) and receive null, exiting silently. Added odd-hour
+ *     aliases (11→help, 13→office_issue, etc.) mirroring the two-hour
+ *     case ranges in send-email.yml.
  *
- *   4. SCHEDULE (Dhaka, UTC+6):
- *        10 AM → help
- *        12 PM → office_issue
- *         2 PM → business_stats
- *         4 PM → premium_submit
- *         6 PM → advance_payment
- *         8 PM → donation
- *      Silent from 10 PM – 10 AM Dhaka.
+ *   [FIX 5] WARNING — No email deduplication guard.
+ *     If the cron runner fired, partially completed, then retried, some
+ *     users received the same email twice. Added checkAndMarkSentToday()
+ *     which writes a flag document to emailSentToday/{today}_{pageKey}
+ *     before sending. On retry the flag is found and the user is skipped.
+ *
+ *   [FIX 6] WARNING — email log schema drift vs push log schema.
+ *     writeEmailLog() now includes devices:[] and statusKey:null defaults
+ *     so the UI (notification-log-backend.js _normalise) can read email
+ *     and push logs with the same field shape.
+ *
  * ============================================================
  */
 
@@ -114,13 +114,20 @@ function getTargetPage() {
     // Silent window: before 10 AM or at/after 22:00 (10 PM) Dhaka → return null
     if (dhakaHour < 10 || dhakaHour >= 22) return null;
     // Map Dhaka hour → page key
+    // FIX 4: Each even hour also has an odd-hour fallback matching the two-hour
+    // window used in send-email.yml (e.g. "3|4" → help). This prevents a silent
+    // null/exit when GitHub runner congestion pushes start-time past the :00
+    // boundary into the next odd hour (e.g. cron fires at 03:55 UTC but the
+    // runner actually begins at 04:01 → dhakaHour=10; previously matched fine,
+    // but if the runner starts at 04:59 UTC → dhakaHour=10 still fine, however
+    // if somehow dhakaHour resolves to 11 we now still return 'office_issue').
     const map = {
-        10: 'help',            // 10:00 AM Dhaka
-        12: 'office_issue',    // 12:00 PM Dhaka
-        14: 'business_stats',  //  2:00 PM Dhaka
-        16: 'premium_submit',  //  4:00 PM Dhaka
-        18: 'advance_payment', //  6:00 PM Dhaka
-        20: 'donation'         //  8:00 PM Dhaka
+        10: 'help',            11: 'help',
+        12: 'office_issue',    13: 'office_issue',
+        14: 'business_stats',  15: 'business_stats',
+        16: 'premium_submit',  17: 'premium_submit',
+        18: 'advance_payment', 19: 'advance_payment',
+        20: 'donation',        21: 'donation',
     };
     return map[dhakaHour] || null;
 }
@@ -264,24 +271,28 @@ async function fetchIssues(uid) {
 }
 
 /**
- * accounts_1st_year / accounts_renewal / accounts_deferred / accounts_mr / accounts_loan
+ * FIX 1 (mirrors FIX-22 in send-push.js v5.7):
+ * Real Firestore collections confirmed in Firestore console:
+ *   'accounts'                  — active premium entries
+ *   'accountsArchive_1st_year'  — archived entries
+ * The old worker queried accounts_1st_year / accounts_renewal /
+ * accounts_deferred / accounts_mr / accounts_loan — none of which exist.
  * Fields: type, slipNo, amount, deposit, balance, date, timestamp
  */
 async function fetchPremiumStatements(uid) {
-    const TABS = ['1st_year', 'renewal', 'deferred', 'mr', 'loan'];
-    const TYPE_DISPLAY = {
-        '1st_year': '১ম বর্ষ', renewal: 'নবায়ন',
-        deferred: 'ডেফার্ড', mr: 'এম আর', loan: 'ঋণ'
-    };
+    const COLLECTIONS = [
+        { col: 'accounts',                 label: 'সক্রিয়' },
+        { col: 'accountsArchive_1st_year', label: '১ম বর্ষ আর্কাইভ' },
+    ];
     const rows = [];
-    for (const tab of TABS) {
+    for (const { col, label } of COLLECTIONS) {
         try {
-            const snap = await BASE(uid).collection(`accounts_${tab}`)
+            const snap = await BASE(uid).collection(col)
                 .orderBy('timestamp', 'desc').get();
             snap.forEach(d => {
                 const data = d.data();
                 rows.push({
-                    type:    TYPE_DISPLAY[tab] || tab,
+                    type:    data.type   || label,
                     slipNo:  data.slipNo  || '—',
                     amount:  data.amount  != null ? Number(data.amount)  : 0,
                     deposit: data.deposit != null ? Number(data.deposit) : 0,
@@ -290,7 +301,7 @@ async function fetchPremiumStatements(uid) {
                 });
             });
         } catch (e) {
-            console.warn(`  ⚠️ accounts_${tab} fetch error:`, e.message);
+            console.warn(`  ⚠️ ${col} fetch error:`, e.message);
         }
     }
     // Sort newest first by date string
@@ -776,6 +787,13 @@ async function writeEmailLog(uid, page, targetPageKey, status, recordCount, deta
             skipped:     status === 'skipped' ? 1 : 0,
             slotHour,
             recordCount: recordCount ?? null,
+            // FIX 6: forward-compatibility with push log schema used by
+            // notification-log-backend.js (_normalise). Push logs include
+            // `devices` (per-device delivery list) and `statusKey` (dedup key).
+            // Email logs don't use these but the UI reads them gracefully when
+            // they are present as typed nulls/empty-arrays.
+            devices:     [],
+            statusKey:   null,
         };
 
         // 1. Per-user email log
@@ -797,12 +815,37 @@ async function writeEmailLog(uid, page, targetPageKey, status, recordCount, deta
 // ── 10. Send email helper ─────────────────────────────────────
 
 async function sendEmail({ toEmail, toName, subject, htmlBody }) {
-    await transporter.sendMail({
+    await transporter.sendMail({\
         from:    `"অফিস ম্যানেজমেন্ট সিস্টেম" <${process.env.GMAIL_USER}>`,
         to:      `"${toName}" <${toEmail}>`,
         subject: subject,
         html:    htmlBody
     });
+}
+
+// ── FIX 5: Per-user per-page-key per-date deduplication ───────
+// Mirrors the seenToday pattern in send-push.js.
+// Prevents duplicate emails if the GitHub runner retries after a
+// partial failure (email was sent to some users, worker crashed,
+// then re-ran and sent again to those already-sent users).
+//
+// Flag path:
+//   artifacts/default-app-id/users/{uid}/emailSentToday/{today}_{pageKey}
+// Document: { sentAt: serverTimestamp, page: pageKey }
+
+async function checkAndMarkSentToday(uid, pageKey, today) {
+    const flagRef = db.collection('artifacts').doc('default-app-id')
+        .collection('users').doc(uid)
+        .collection('emailSentToday').doc(`${today}_${pageKey}`);
+    const snap = await flagRef.get();
+    if (snap.exists) {
+        return false; // already sent today
+    }
+    await flagRef.set({
+        sentAt: admin.firestore.FieldValue.serverTimestamp(),
+        page: pageKey
+    });
+    return true; // flag written — safe to send
 }
 
 // ── 11. Main ──────────────────────────────────────────────────
@@ -883,6 +926,15 @@ async function run() {
                     console.log(`  ⏭️  [${page.name}] no records — skip (no empty email sent).`);
                     totalSkipped++;
                     await writeEmailLog(uid, page, targetPageKey, 'skipped', 0, `${page.name} — রেকর্ড নেই, ইমেইল পাঠানো হয়নি`);
+                    continue;
+                }
+
+                // FIX 5: Deduplication — skip if this user already got this email today
+                const canSend = await checkAndMarkSentToday(uid, targetPageKey, today);
+                if (!canSend) {
+                    console.log(`  ⏭️  [${page.name}] already sent today for ${uid} — skip (dedup).`);
+                    totalSkipped++;
+                    await writeEmailLog(uid, page, targetPageKey, 'skipped', 0, `${page.name} — আজ ইতিমধ্যে পাঠানো হয়েছে (dedup)`);
                     continue;
                 }
 
