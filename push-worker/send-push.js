@@ -1,8 +1,24 @@
 /**
  * ============================================================
- * push-worker/send-push.js  —  v5.7
+ * push-worker/send-push.js  —  v5.8
  * Standalone Push Notification Worker for GitHub Actions
  * Project : অফিস ম্যানেজমেন্ট সিস্টেম
+ *
+ * WHAT CHANGED in v5.8:
+ *
+ *   [Fix C] slotHour in Fix-B skipped log now uses resolvedHour (not dhakaHour).
+ *     Previously: when no valid subscriptions existed the skipped log entry wrote
+ *     `slotHour: dhakaHour` — the raw cron-fire hour (e.g. 21 for the 22:00 slot
+ *     whose cron fires at Dhaka 21:55). The notification-log page would therefore
+ *     display "🕐 ২১:০০ ঢাকা" instead of "🕐 ২২:০০ ঢাকা".
+ *     Fix: changed to `slotHour: resolvedHour` (already computed two lines above).
+ *
+ *   [Fix D] sendModuleNotificationToUser now also receives resolvedHour (not
+ *     dhakaHour) as the slotHour argument for users who DO have valid
+ *     subscriptions. The same :55-fire offset that caused the Fix-B skipped-log
+ *     display bug also caused every regular push-log entry to record the
+ *     preceding hour (e.g. 21 instead of 22). Both call sites in
+ *     processUserAtHour() now consistently pass resolvedHour.
  *
  * WHAT CHANGED in v5.7:
  *
@@ -306,9 +322,13 @@ const CONFIG = {
     // FIX-5: was 'Asia/Kolkata' (UTC+5:30) — Dhaka is UTC+6
     TIMEZONE: 'Asia/Dhaka',
 
-    // Active window: 06:00–23:00 Dhaka
+    // Active window: 06:00–24:00 Dhaka (i.e. up to 23:59).
+    // ACTIVE_HOUR_END is 24 (not 23) so that the 22:00 slot is still
+    // processed if the GitHub runner is delayed >1 hour after the
+    // 15:55 UTC cron fires (Dhaka 21:55 → runner starts at 23:xx).
+    // dhakaHour 22 and 23 both satisfy: hour >= 6 && hour < 24.
     ACTIVE_HOUR_START:   6,
-    ACTIVE_HOUR_END:    23,
+    ACTIVE_HOUR_END:    24,
 
     MAX_RETRY_ATTEMPTS: 3,
     RETRY_DELAY_MS:     1000,
@@ -1422,7 +1442,8 @@ async function writePushLog(uid, module, result, count, statusKey, slotHour, dev
 
         // 2. Global run log (for the run-level summary view)
         await getDB()
-            .collection('artifacts/default-app-id/pushRunLogs')
+            .collection('artifacts').doc('default-app-id')
+            .collection('pushRunLogs')
             .add({ ...logEntry, uid });
 
     } catch (err) {
@@ -1534,8 +1555,8 @@ async function sendModuleNotificationToUser(uid, module, subscriptions, slotHour
         }
     }
 
-    if (result.pushed > 0 && !CONFIG.DRY_RUN) {
-        await markSeenToday(uid, statusKey);
+    if ((result.pushed > 0 || result.errors > 0) && !CONFIG.DRY_RUN) {
+        if (result.pushed > 0) await markSeenToday(uid, statusKey);
         await writePushLog(uid, module, result, count, statusKey, slotHour, deviceResults);
     }
 
@@ -1619,9 +1640,9 @@ async function sendTaskReminderToUser(uid, today, subscriptions) {
         }
     }
 
-    if (result.pushed > 0 && !CONFIG.DRY_RUN) {
-        await markSeenToday(uid, statusKey);
-        await markTaskNotificationsAsPushed(uid);
+    if ((result.pushed > 0 || result.errors > 0) && !CONFIG.DRY_RUN) {
+        if (result.pushed > 0) await markSeenToday(uid, statusKey);
+        if (result.pushed > 0) await markTaskNotificationsAsPushed(uid);
         const taskModule = {
             tag:           'task-manager',
             icon:          '📋',
@@ -1642,9 +1663,10 @@ async function sendTaskReminderToUser(uid, today, subscriptions) {
 async function processUserAtHour(uid, dhakaHour, today) {
     const stats = { pushed: 0, skipped: 0, errors: 0, expiredEndpoints: [] };
 
-    const modules = HOUR_SCHEDULE[dhakaHour];
+    const resolvedHour = resolveSlotHour(dhakaHour);
+    const modules = resolvedHour ? HOUR_SCHEDULE[resolvedHour] : null;
     if (!modules || modules.length === 0) {
-        logger.debug(`No schedule for hour ${dhakaHour}`, { uid });
+        logger.debug(`No schedule for hour ${dhakaHour} (resolved: ${resolvedHour ?? 'none'})`, { uid });
         return stats;
     }
 
@@ -1668,7 +1690,7 @@ async function processUserAtHour(uid, dhakaHour, today) {
                         sent:      0,
                         failed:    0,
                         skipped:   1,
-                        slotHour:  dhakaHour,
+                        slotHour:  resolvedHour,
                         statusKey: buildStatusKey(module.tag, null),
                         runId:     CONFIG.RUN_ID,
                         recordCount: null,
@@ -1691,7 +1713,7 @@ async function processUserAtHour(uid, dhakaHour, today) {
             if (module.isTaskReminder) {
                 result = await sendTaskReminderToUser(uid, today, subscriptions);
             } else {
-                result = await sendModuleNotificationToUser(uid, module, subscriptions, dhakaHour);
+                result = await sendModuleNotificationToUser(uid, module, subscriptions, resolvedHour);
             }
 
             stats.pushed   += result.pushed;
@@ -1746,7 +1768,7 @@ async function runPushWorker() {
         hasSlot,
     });
 
-    // Guard: resting hours (23:00–06:00 Dhaka)
+    // Guard: resting hours (00:00–06:00 Dhaka; ACTIVE_HOUR_END=24 covers 22:xx/23:xx)
     if (!isActive && !CONFIG.FORCE_SEND && !CONFIG.IS_MANUAL_TRIGGER) {
         logger.warn('🔴 Resting hours — exiting silently', { dhakaHour });
         return { success: true, skipped: true, reason: 'Resting hours' };
