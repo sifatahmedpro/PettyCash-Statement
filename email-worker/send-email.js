@@ -122,7 +122,7 @@ function getTargetPage() {
     // but if the runner starts at 04:59 UTC → dhakaHour=10 still fine, however
     // if somehow dhakaHour resolves to 11 we now still return 'office_issue').
     const map = {
-        10: 'help',            11: 'help',
+         9: 'help',            10: 'help',            11: 'help',
         12: 'office_issue',    13: 'office_issue',
         14: 'business_stats',  15: 'business_stats',
         16: 'premium_submit',  17: 'premium_submit',
@@ -815,7 +815,7 @@ async function writeEmailLog(uid, page, targetPageKey, status, recordCount, deta
 // ── 10. Send email helper ─────────────────────────────────────
 
 async function sendEmail({ toEmail, toName, subject, htmlBody }) {
-    await transporter.sendMail({\
+    await transporter.sendMail({
         from:    `"অফিস ম্যানেজমেন্ট সিস্টেম" <${process.env.GMAIL_USER}>`,
         to:      `"${toName}" <${toEmail}>`,
         subject: subject,
