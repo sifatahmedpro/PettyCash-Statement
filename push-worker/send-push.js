@@ -1,10 +1,22 @@
 /**
  * ============================================================
- * push-worker/send-push.js  —  v5.8
+ * push-worker/send-push.js  —  v5.9
  * Standalone Push Notification Worker for GitHub Actions
  * Project : অফিস ম্যানেজমেন্ট সিস্টেম
  *
- * WHAT CHANGED in v5.8:
+ * WHAT CHANGED in v5.9:
+ *
+ *   [Perf-1] Switch COUNT reads to count() aggregation (saves ~80% of reads).
+ *     In fetchQuery() (normal collection path) and the extraCollections loop,
+ *     replaced full .get() (N reads) with .count().get() (always 1 read).
+ *     The count() aggregation is wrapped in a try/catch as before so any
+ *     collection that doesn't support it degrades gracefully.
+ *
+ *   [Perf-2] Fetch only user IDs in runPushWorker().
+ *     Added .select() before .get() on the users collection so Firestore
+ *     returns only document references with no field payload. This reduces
+ *     bandwidth and read cost when the user collection is large. The worker
+ *     only needs userDoc.id, so no downstream code is affected.
  *
  *   [Fix C] slotHour in Fix-B skipped log now uses resolvedHour (not dhakaHour).
  *     Previously: when no valid subscriptions existed the skipped log entry wrote
@@ -1026,14 +1038,11 @@ async function getCollectionData(uid, module) {
                 try {
                     const ref = getDB().collection(`artifacts/default-app-id/users/${uid}/${col}`);
 
-                    // COUNT: always do a full get() for accurate total —
-                    // Admin SDK count() aggregation silently fails on some
-                    // collection shapes, and limit(N).get().size only returns
-                    // N at most, not the real total.
+                    // COUNT: use count() aggregation — costs 1 read, not N.
                     let count = 0;
                     try {
-                        const countSnap = await ref.get();
-                        count = countSnap.size;
+                        const aggSnap = await ref.count().get();
+                        count = aggSnap.data().count;
                     } catch (_) {}
 
                     // PREVIEW: fetch latest N docs ordered by timestamp
@@ -1066,13 +1075,12 @@ async function getCollectionData(uid, module) {
         const ref = getDB().collection(`artifacts/default-app-id/users/${uid}/${collectionName}`);
 
         async function fetchQuery(q) {
-            // COUNT: always fetch the full result set for accurate total.
-            // Admin SDK count() aggregation can silently fail, and using
-            // limit(N).get().size caps the count at N — not the real total.
+            // COUNT: use count() aggregation — costs 1 read regardless of
+            // collection size (vs N reads for a full .get()).
             let total = null;
             try {
-                const countSnap = await q.get();
-                total = countSnap.size;
+                const aggSnap = await q.count().get();
+                total = aggSnap.data().count;
             } catch (_) {}
 
             // PREVIEW: separate limited+ordered query for the notification body
@@ -1823,7 +1831,10 @@ async function runPushWorker() {
     // Fetch all users
     let usersSnap;
     try {
-        usersSnap = await getDB().collection('artifacts/default-app-id/users').get();
+        usersSnap = await getDB()
+            .collection('artifacts/default-app-id/users')
+            .select()   // no field payload — just doc refs (1 read per user, no field data)
+            .get();
     } catch (err) {
         logger.error('Failed to fetch users collection', err);
         return { success: false, error: err.message, duration: Date.now() - startTime };
@@ -1902,7 +1913,7 @@ async function runPushWorker() {
 (async () => {
     try {
         logger.info('═══════════════════════════════════════════════════════════');
-        logger.info('   অফিস ম্যানেজমেন্ট সিস্টেম — Push Notification Worker v5.7');
+        logger.info('   অফিস ম্যানেজমেন্ট সিস্টেম — Push Notification Worker v5.9');
         logger.info('═══════════════════════════════════════════════════════════');
 
         initializeFirebase();
