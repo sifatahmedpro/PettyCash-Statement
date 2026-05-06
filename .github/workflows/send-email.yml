@@ -4,12 +4,12 @@ name: Email Digest
 
 on:
   schedule:
-    - cron: '55 3 * * *'   #  9:55 AM Dhaka  → Help            (arrives ~10:00 AM)
-    - cron: '55 5 * * *'   # 11:55 AM Dhaka  → Office Issue    (arrives ~12:00 PM)
-    - cron: '55 7 * * *'   #  1:55 PM Dhaka  → Business Stats  (arrives  ~2:00 PM)
-    - cron: '55 9 * * *'   #  3:55 PM Dhaka  → Premium Submit  (arrives  ~4:00 PM)
-    - cron: '55 11 * * *'  #  5:55 PM Dhaka  → Advance Payment (arrives  ~6:00 PM)
-    - cron: '55 13 * * *'  #  7:55 PM Dhaka  → Donation        (arrives  ~8:00 PM)
+    - cron: '0 4 * * *'    # 10:00 AM Dhaka  → Help            (offset +5 min from push cron 03:55)
+    - cron: '0 6 * * *'    # 12:00 PM Dhaka  → Office Issue    (offset +5 min from push cron 05:55)
+    - cron: '0 8 * * *'    #  2:00 PM Dhaka  → Business Stats  (offset +5 min from push cron 07:55)
+    - cron: '0 10 * * *'   #  4:00 PM Dhaka  → Premium Submit  (offset +5 min from push cron 09:55)
+    - cron: '0 12 * * *'   #  6:00 PM Dhaka  → Advance Payment (offset +5 min from push cron 11:55)
+    - cron: '0 14 * * *'   #  8:00 PM Dhaka  → Donation        (offset +5 min from push cron 13:55)
 
   # Run manually from the Actions tab for testing
   workflow_dispatch:
