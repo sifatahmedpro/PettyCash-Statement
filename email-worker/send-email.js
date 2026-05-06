@@ -146,7 +146,7 @@ const BASE = (uid) =>
  */
 async function fetchAdvancePayments(uid) {
     const snap = await BASE(uid).collection('advance_payments')
-        .orderBy('timestamp', 'desc').get();
+        .orderBy('timestamp', 'desc').limit(200).get();
     const active = [], archived = [];
     snap.forEach(d => {
         const data = d.data();
@@ -178,7 +178,7 @@ async function fetchBusinessStats(uid) {
     let rows = [];
     try {
         const snap = await BASE(uid).collection('business_analysis_archives')
-            .orderBy('meta.createdAt', 'desc').get();
+            .orderBy('meta.createdAt', 'desc').limit(50).get();
         snap.forEach(d => {
             const data = d.data();
             const meta = data.meta || {};
@@ -200,7 +200,7 @@ async function fetchBusinessStats(uid) {
  */
 async function fetchDonations(uid) {
     const snap = await BASE(uid).collection('donations')
-        .orderBy('timestamp', 'desc').get();
+        .orderBy('timestamp', 'desc').limit(200).get();
     const active = [], archived = [];
     snap.forEach(d => {
         const data = d.data();
@@ -226,7 +226,7 @@ async function fetchDonations(uid) {
  */
 async function fetchAllTasks(uid) {
     const snap = await BASE(uid).collection('tasks')
-        .orderBy('date', 'asc').get();
+        .orderBy('date', 'asc').limit(200).get();
     const pending = [], done = [];
     snap.forEach(d => {
         const data = d.data();
@@ -254,7 +254,7 @@ async function fetchAllTasks(uid) {
  */
 async function fetchIssues(uid) {
     const snap = await BASE(uid).collection('office_issues')
-        .orderBy('timestamp', 'desc').get();
+        .orderBy('timestamp', 'desc').limit(200).get();
     const pending = [], resolved = [];
     snap.forEach(d => {
         const data = d.data();
@@ -288,7 +288,7 @@ async function fetchPremiumStatements(uid) {
     for (const { col, label } of COLLECTIONS) {
         try {
             const snap = await BASE(uid).collection(col)
-                .orderBy('timestamp', 'desc').get();
+                .orderBy('timestamp', 'desc').limit(200).get();
             snap.forEach(d => {
                 const data = d.data();
                 rows.push({
@@ -874,7 +874,9 @@ async function run() {
 
     try {
         const usersRef  = db.collection('artifacts').doc('default-app-id').collection('users');
-        const usersSnap = await usersRef.get();
+        // [Perf] .select() fetches only doc references with no field payload.
+        // The loop below only needs userDoc.id — no field data required.
+        const usersSnap = await usersRef.select().get();
 
         if (usersSnap.empty) {
             console.log('ℹ️  No users found.');
@@ -956,6 +958,12 @@ async function run() {
         }
 
     } catch (err) {
+        // Quota circuit-breaker: exit cleanly so GitHub Actions does not mark
+        // the run as a failure — quota resets at midnight UTC automatically.
+        if (err.code === 8 || (err.message && err.message.includes('RESOURCE_EXHAUSTED'))) {
+            console.warn('⚠️  Firestore quota exhausted — exiting cleanly. Quota resets at midnight UTC.');
+            process.exit(0);
+        }
         console.error('❌ Fatal error:', err);
         process.exit(1);
     }
