@@ -874,6 +874,32 @@ function buildStatusKey(tag, pendingTasks) {
 // SEEN-TODAY / SNOOZE STATE
 // ══════════════════════════════════════════════════════════════
 
+/**
+ * [Perf] In-memory equivalent of checkSeenOrSnoozed() — no Firestore read.
+ * seenDocData is the already-fetched .data() from pushState/seenToday,
+ * or {} if the doc didn't exist.
+ */
+function _checkSeenOrSnoozedFromData(seenDocData, statusKey) {
+    try {
+        const today = getTodayDhaka();
+        if (!seenDocData || seenDocData.date !== today) return { skip: false };
+
+        if (Array.isArray(seenDocData.keys) && seenDocData.keys.includes(statusKey)) {
+            return { skip: true, reason: 'Already sent today' };
+        }
+        if (seenDocData.snoozed && seenDocData.snoozed[statusKey]) {
+            const until = seenDocData.snoozed[statusKey];
+            if (Date.now() < until) {
+                return { skip: true, reason: `Snoozed until ${new Date(until).toLocaleTimeString()}` };
+            }
+        }
+        return { skip: false };
+    } catch (err) {
+        logger.warn('_checkSeenOrSnoozedFromData error — proceeding', { statusKey, error: err.message });
+        return { skip: false };
+    }
+}
+
 async function checkSeenOrSnoozed(uid, statusKey) {
     try {
         const ref  = getDB().doc(`artifacts/default-app-id/users/${uid}/pushState/seenToday`);
@@ -1511,11 +1537,15 @@ async function getUserSubscriptions(uid) {
 // Returns { pushed, skipped, errors, expiredEndpoints }
 // ══════════════════════════════════════════════════════════════
 
-async function sendModuleNotificationToUser(uid, module, subscriptions, slotHour = null) {
+async function sendModuleNotificationToUser(uid, module, subscriptions, slotHour = null, seenDocData = null) {
     const result = { pushed: 0, skipped: 0, errors: 0, expiredEndpoints: [] };
 
     const statusKey  = buildStatusKey(module.tag, null);
-    const seenCheck  = await checkSeenOrSnoozed(uid, statusKey);
+    // [Perf] seenDocData is pre-fetched once per user in processUserAtHour,
+    // so we check it in-memory instead of issuing a Firestore read per module.
+    const seenCheck  = seenDocData !== null
+        ? _checkSeenOrSnoozedFromData(seenDocData, statusKey)
+        : await checkSeenOrSnoozed(uid, statusKey);
 
     if (seenCheck.skip) {
         logger.debug(`Module ${module.tag} skipped for ${uid}: ${seenCheck.reason}`);
@@ -1678,6 +1708,19 @@ async function processUserAtHour(uid, dhakaHour, today) {
         return stats;
     }
 
+    // [Perf] Fetch the seenToday doc ONCE per user (not once per module).
+    // This replaces 1 Firestore read per module with a single shared fetch,
+    // saving (modules.length - 1) reads per user per slot.
+    let _seenDocData = null;
+    try {
+        const _seenRef  = getDB().doc(`artifacts/default-app-id/users/${uid}/pushState/seenToday`);
+        const _seenSnap = await _seenRef.get();
+        _seenDocData    = _seenSnap.exists ? _seenSnap.data() : {};
+    } catch (err) {
+        logger.warn('processUserAtHour: failed to pre-fetch seenToday — will fall back per-module', { uid, error: err.message });
+        _seenDocData = null; // null triggers per-module fallback in sendModuleNotificationToUser
+    }
+
     const subscriptions = await getUserSubscriptions(uid);
     if (subscriptions.length === 0) {
         logger.debug('No valid push subscriptions for user', { uid });
@@ -1721,7 +1764,7 @@ async function processUserAtHour(uid, dhakaHour, today) {
             if (module.isTaskReminder) {
                 result = await sendTaskReminderToUser(uid, today, subscriptions);
             } else {
-                result = await sendModuleNotificationToUser(uid, module, subscriptions, resolvedHour);
+                result = await sendModuleNotificationToUser(uid, module, subscriptions, resolvedHour, _seenDocData);
             }
 
             stats.pushed   += result.pushed;
@@ -1836,6 +1879,16 @@ async function runPushWorker() {
             .select()   // no field payload — just doc refs (1 read per user, no field data)
             .get();
     } catch (err) {
+        // Quota circuit-breaker: RESOURCE_EXHAUSTED (code 8) means Firestore
+        // free-tier daily reads are exhausted. Exit cleanly (exit 0) so GitHub
+        // Actions does not mark the run as failed — quota resets at midnight UTC
+        // and the next scheduled run will proceed normally.
+        if (err.code === 8 || (err.message && err.message.includes('RESOURCE_EXHAUSTED'))) {
+            logger.warn('⚠️  Firestore quota exhausted — exiting cleanly. Quota resets at midnight UTC.', {
+                errorCode: err.code, errorMessage: err.message,
+            });
+            return { success: true, skipped: true, reason: 'quota_exhausted', duration: Date.now() - startTime };
+        }
         logger.error('Failed to fetch users collection', err);
         return { success: false, error: err.message, duration: Date.now() - startTime };
     }
