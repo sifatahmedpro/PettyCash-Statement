@@ -132,10 +132,18 @@ function getTargetPage() {
     return map[dhakaHour] || null;
 }
 
-// ── 4. Firestore base path helper ────────────────────────────
+// ── 4. Firestore base path helpers ───────────────────────────
+
+// Must match ADMIN_UID in app-backend.js — UID is immutable, never use email.
+const ADMIN_UID = 'bvBsjVfgErd53b0GLElPjUoKzNW2';
 
 const BASE = (uid) =>
     db.collection('artifacts').doc('default-app-id').collection('users').doc(uid);
+
+// Admin-scoped base — for run logs and other admin-only collections.
+const ADMIN_BASE =
+    db.collection('artifacts').doc('default-app-id')
+      .collection('users').doc(ADMIN_UID);
 
 // ── 5. Firestore data fetchers ────────────────────────────────
 // Each fetcher uses the EXACT collection names written by the app.
@@ -755,7 +763,7 @@ const PAGE_MAP = {
 // ── 9. Firestore log writers ──────────────────────────────────
 //
 //   Per-user:  artifacts/default-app-id/users/{uid}/emailLogs/{auto-id}
-//   Global:    artifacts/default-app-id/emailRunLogs/{auto-id}
+//   Global:    artifacts/default-app-id/users/{adminUID}/emailRunLogs/{auto-id}
 //
 // Schema mirrors send-push.js writePushLog so notification-log_module.js
 // can read both collections with identical field names.
@@ -803,8 +811,7 @@ async function writeEmailLog(uid, page, targetPageKey, status, recordCount, deta
             .add(logEntry);
 
         // 2. Global run log (for summary view on notification-log page)
-        await db.collection('artifacts').doc('default-app-id')
-            .collection('emailRunLogs')
+        await ADMIN_BASE.collection('emailRunLogs')
             .add({ ...logEntry, uid });
 
     } catch (err) {
