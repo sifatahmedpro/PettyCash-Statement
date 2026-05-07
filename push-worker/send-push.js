@@ -732,6 +732,15 @@ function getDB() {
     return _db;
 }
 
+// Must match ADMIN_UID in app-backend.js — UID is immutable, never use email.
+const ADMIN_UID  = 'bvBsjVfgErd53b0GLElPjUoKzNW2';
+
+// Admin-scoped base ref — for run logs and other admin-only collections.
+// Lazy accessor so getDB() is never called before initializeFirebase().
+const ADMIN_BASE = () =>
+    getDB().collection('artifacts').doc('default-app-id')
+           .collection('users').doc(ADMIN_UID);
+
 function initializeFirebase() {
     if (!CONFIG.PROJECT_ID || !CONFIG.CLIENT_EMAIL || !CONFIG.PRIVATE_KEY) {
         logger.error('Firebase credentials incomplete', null, {
@@ -1426,7 +1435,7 @@ async function resetSeenTodayForAllUsers(userDocs) {
 // WRITE PUSH DELIVERY LOG TO FIRESTORE
 // Writes to two paths:
 //   1. users/{uid}/pushLogs/{auto-id}      ← per-user delivery record
-//   2. artifacts/default-app-id/pushRunLogs/{auto-id} ← global run log
+//   2. artifacts/default-app-id/users/{adminUID}/pushRunLogs/{auto-id} ← global run log
 // The notification-log page reads both collections.
 // ══════════════════════════════════════════════════════════════
 
@@ -1475,9 +1484,7 @@ async function writePushLog(uid, module, result, count, statusKey, slotHour, dev
             .add(logEntry);
 
         // 2. Global run log (for the run-level summary view)
-        await getDB()
-            .collection('artifacts').doc('default-app-id')
-            .collection('pushRunLogs')
+        await ADMIN_BASE().collection('pushRunLogs')
             .add({ ...logEntry, uid });
 
     } catch (err) {
