@@ -77,23 +77,21 @@ jobs:
         timeout-minutes: 5
 
       # ── Step 4: Validate secrets ───────────────────────────────
+      # Firebase secrets removed. Now requires only SUPABASE_URL +
+      # SUPABASE_SERVICE_ROLE_KEY instead of the four Firebase vars.
       - name: Validate configuration
         env:
-          FIREBASE_PROJECT_ID:   ${{ secrets.FIREBASE_PROJECT_ID }}
-          FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
-          FIREBASE_PRIVATE_KEY:  ${{ secrets.FIREBASE_PRIVATE_KEY }}
-          FIREBASE_API_KEY:      ${{ secrets.FIREBASE_API_KEY }}
-          VAPID_PUBLIC_KEY:      ${{ secrets.VAPID_PUBLIC_KEY }}
-          VAPID_PRIVATE_KEY:     ${{ secrets.VAPID_PRIVATE_KEY }}
-          VAPID_SUBJECT:         ${{ secrets.VAPID_SUBJECT }}
+          SUPABASE_URL:               ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY:  ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          VAPID_PUBLIC_KEY:           ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY:          ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_SUBJECT:              ${{ secrets.VAPID_SUBJECT }}
         run: |
           echo "🔍 Validating secrets..."
 
           required_secrets=(
-            "FIREBASE_PROJECT_ID"
-            "FIREBASE_CLIENT_EMAIL"
-            "FIREBASE_PRIVATE_KEY"
-            "FIREBASE_API_KEY"
+            "SUPABASE_URL"
+            "SUPABASE_SERVICE_ROLE_KEY"
             "VAPID_PUBLIC_KEY"
             "VAPID_PRIVATE_KEY"
             "VAPID_SUBJECT"
@@ -132,10 +130,6 @@ jobs:
           utc_hour=$(date -u +%H | sed 's/^0//')   # strip leading zero → integer
           dhaka_hour=$(( (utc_hour + 6) % 24 ))
 
-          ## Each case matches TWO Dhaka hours: the cron-fire hour (e.g. 5 for UTC 23:55→Dhaka 05:55)
-          ## AND the target slot hour (e.g. 6 for Dhaka 06:00) so that a slow runner
-          ## that crosses the :00 boundary still resolves the correct slot.
-          ## e.g. cron fires at UTC 23:55 (Dhaka 05:55) but date runs at Dhaka 06:01 → matches "5|6".
           case $dhaka_hour in
             5|6)   slot_name="advance-payment · manpower · policy-files" ;;
             7|8)   slot_name="fund-archive · hbl-recovery · vat-tax" ;;
@@ -149,9 +143,6 @@ jobs:
             *)     slot_name="(no scheduled slot — force_send or manual trigger required)" ;;
           esac
 
-          ## Active = 06:00–24:00 Dhaka (ACTIVE_HOUR_END=24 in send-push.js CONFIG;
-          ## the 22:00 slot cron fires at UTC 15:55 → Dhaka 21:55/22:xx, so
-          ## hours 22 and 23 must be treated as active here too).
           if [ $dhaka_hour -ge 6 ] && [ $dhaka_hour -lt 24 ]; then
             is_active="true"
             status="🟢 Active"
@@ -174,22 +165,20 @@ jobs:
       - name: Send push notifications
         id: push_worker
         env:
-          FIREBASE_PROJECT_ID:   ${{ secrets.FIREBASE_PROJECT_ID }}
-          FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
-          FIREBASE_PRIVATE_KEY:  ${{ secrets.FIREBASE_PRIVATE_KEY }}
-          FIREBASE_API_KEY:      ${{ secrets.FIREBASE_API_KEY }}
-          VAPID_PUBLIC_KEY:      ${{ secrets.VAPID_PUBLIC_KEY }}
-          VAPID_PRIVATE_KEY:     ${{ secrets.VAPID_PRIVATE_KEY }}
-          VAPID_SUBJECT:         ${{ secrets.VAPID_SUBJECT }}
-          FORCE_SEND:            ${{ github.event.inputs.force_send }}
-          DRY_RUN:               ${{ github.event.inputs.dry_run }}
-          RESET_SEEN_TODAY:      ${{ github.event.inputs.reset_seen_today || 'false' }}
-          RUN_ID:                ${{ github.run_id }}
-          WORKFLOW_RUN_NUMBER:   ${{ github.run_number }}
-          GITHUB_ACTOR:          ${{ github.actor }}
-          IS_MANUAL_TRIGGER:     ${{ github.event_name == 'workflow_dispatch' }}
+          SUPABASE_URL:               ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY:  ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          VAPID_PUBLIC_KEY:           ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY:          ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_SUBJECT:              ${{ secrets.VAPID_SUBJECT }}
+          FORCE_SEND:                 ${{ github.event.inputs.force_send }}
+          DRY_RUN:                    ${{ github.event.inputs.dry_run }}
+          RESET_SEEN_TODAY:           ${{ github.event.inputs.reset_seen_today || 'false' }}
+          RUN_ID:                     ${{ github.run_id }}
+          WORKFLOW_RUN_NUMBER:        ${{ github.run_number }}
+          GITHUB_ACTOR:               ${{ github.actor }}
+          IS_MANUAL_TRIGGER:          ${{ github.event_name == 'workflow_dispatch' }}
         run: |
-          echo "🚀 Starting push notification worker (v5.8)..."
+          echo "🚀 Starting push notification worker (v6.0)..."
           echo ""
           echo "Run information:"
           echo "  Run ID:         $RUN_ID"
