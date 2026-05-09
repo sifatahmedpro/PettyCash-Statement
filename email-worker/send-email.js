@@ -1,50 +1,53 @@
 /**
  * ============================================================
- * email-worker/send-email.js  —  v5.1 (BUG-FIX RELEASE)
+ * email-worker/send-email.js  —  v6.0 (Supabase migration from Firebase/Firestore)
  *
- * WHAT CHANGED vs v5.0:
+ * MIGRATION SUMMARY (Firebase → Supabase):
  *
- *   [FIX 1] CRITICAL — fetchPremiumStatements() collection mismatch.
- *     v5.0 queried accounts_1st_year / accounts_renewal / accounts_deferred /
- *     accounts_mr / accounts_loan — none of which exist in Firestore.
- *     The push worker (FIX-22 in send-push.js v5.7) confirmed the real
- *     collections are 'accounts' (active) and 'accountsArchive_1st_year'
- *     (archived). The 4 PM "প্রিমিয়াম জমা" slot now queries those two.
+ *   • firebase-admin / Firestore  → @supabase/supabase-js (service-role key)
+ *   • admin.initializeApp()       → createClient(url, serviceRoleKey)
+ *   • BASE(uid).collection(x)    → supabase.from(x).select().eq('uid', uid)
+ *   • .get() / snap.forEach()    → supabase query → data array
+ *   • admin.firestore.FieldValue.serverTimestamp() → new Date().toISOString()
+ *   • emailSentToday sub-collection → email_sent_today table
+ *   • emailLogs sub-collection       → email_logs table
+ *   • emailRunLogs sub-collection    → email_run_logs table
+ *   • users collection listing       → admin_profile table (all rows)
+ *   • data/emailSubscription doc     → email_subscriptions table
+ *   • data/profile doc               → admin_profile table (office_name col)
  *
- *   [FIX 4] WARNING — getTargetPage() silent null on odd-hour runner.
- *     The hour-map only matched even hours (10,12,14,16,18,20). A GitHub
- *     runner delayed past the :05 mark could start at an odd Dhaka hour
- *     (e.g. 11, 13) and receive null, exiting silently. Added odd-hour
- *     aliases (11→help, 13→office_issue, etc.) mirroring the two-hour
- *     case ranges in send-email.yml.
+ * TABLE MAP (Firestore collection → Supabase table):
+ *   advance_payments              → advance_payments     (uid, is_archived, …)
+ *   business_analysis_archives    → business_analysis_archives (uid, meta jsonb, …)
+ *   donations                     → donations            (uid, is_archived, …)
+ *   tasks                         → tasks                (uid, status, date, …)
+ *   office_issues                 → office_issues        (uid, status, priority, …)
+ *   accounts / accountsArchive_*  → accounts             (uid, is_archived, …)
+ *   emailSentToday/{today}_{key}  → email_sent_today     (uid, page_key, sent_date)
+ *   emailLogs                     → email_logs           (uid, …)
+ *   emailRunLogs                  → email_run_logs       (uid, …)
  *
- *   [FIX 5] WARNING — No email deduplication guard.
- *     If the cron runner fired, partially completed, then retried, some
- *     users received the same email twice. Added checkAndMarkSentToday()
- *     which writes a flag document to emailSentToday/{today}_{pageKey}
- *     before sending. On retry the flag is found and the user is skipped.
- *
- *   [FIX 6] WARNING — email log schema drift vs push log schema.
- *     writeEmailLog() now includes devices:[] and statusKey:null defaults
- *     so the UI (notification-log-backend.js _normalise) can read email
- *     and push logs with the same field shape.
- *
+ * UNCHANGED:
+ *   • All email HTML templates (emailShell, tableHTML, builders, PAGE_MAP)
+ *   • Nodemailer transport / GMAIL_* secrets
+ *   • getTargetPage() / getBengaliDateLabel() / Dhaka time helpers
+ *   • FIX 4 (odd-hour aliases) and FIX 5 (deduplication) logic — now using
+ *     Supabase upsert with a UNIQUE constraint on (uid, page_key, sent_date).
+ *   • FIX 6 (email log schema parity with push logs).
  * ============================================================
  */
 
 'use strict';
 
-const admin      = require('firebase-admin');
-const nodemailer = require('nodemailer');
+const { createClient } = require('@supabase/supabase-js');
+const nodemailer        = require('nodemailer');
 
-// ── 1. Firebase Admin init ────────────────────────────────────
+// ── 1. Supabase Admin init ────────────────────────────────────
+// Uses the SERVICE ROLE key (server-side only — never expose in the browser).
+// Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in GitHub Secrets.
 
-const privateKey = process.env.FIREBASE_PRIVATE_KEY
-    ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
-    : null;
-
-if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL || !privateKey) {
-    console.error('❌ Missing Firebase credentials. Check GitHub Secrets.');
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.error('❌ Missing Supabase credentials. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in GitHub Secrets.');
     process.exit(1);
 }
 
@@ -53,15 +56,11 @@ if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
     process.exit(1);
 }
 
-admin.initializeApp({
-    credential: admin.credential.cert({
-        projectId:   process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey:  privateKey
-    })
-});
-
-const db = admin.firestore();
+const supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    { auth: { persistSession: false } }
+);
 
 // ── 2. Nodemailer transporter ─────────────────────────────────
 
@@ -107,20 +106,9 @@ function getTargetPage() {
     if (process.env.TARGET_PAGE) {
         return process.env.TARGET_PAGE.trim();
     }
-    // Fallback: derive from current Dhaka hour (10 PM–10 AM is silent window)
-    // getDhakaDate() returns a Date shifted by +6 h, so getUTCHours() gives
-    // the true Dhaka local hour (0–23).
     const dhakaHour = getDhakaDate().getUTCHours();
-    // Silent window: before 10 AM or at/after 22:00 (10 PM) Dhaka → return null
     if (dhakaHour < 10 || dhakaHour >= 22) return null;
-    // Map Dhaka hour → page key
-    // FIX 4: Each even hour also has an odd-hour fallback matching the two-hour
-    // window used in send-email.yml (e.g. "3|4" → help). This prevents a silent
-    // null/exit when GitHub runner congestion pushes start-time past the :00
-    // boundary into the next odd hour (e.g. cron fires at 03:55 UTC but the
-    // runner actually begins at 04:01 → dhakaHour=10; previously matched fine,
-    // but if the runner starts at 04:59 UTC → dhakaHour=10 still fine, however
-    // if somehow dhakaHour resolves to 11 we now still return 'office_issue').
+    // FIX 4: odd-hour aliases preserved — each slot covers two hours.
     const map = {
          9: 'help',            10: 'help',            11: 'help',
         12: 'office_issue',    13: 'office_issue',
@@ -132,44 +120,40 @@ function getTargetPage() {
     return map[dhakaHour] || null;
 }
 
-// ── 4. Firestore base path helpers ───────────────────────────
-
-// Must match ADMIN_UID in app-backend.js — UID is immutable, never use email.
+// ── 4. Admin UID (matches app-backend.js) ─────────────────────
 const ADMIN_UID = 'bvBsjVfgErd53b0GLElPjUoKzNW2';
 
-const BASE = (uid) =>
-    db.collection('artifacts').doc('default-app-id').collection('users').doc(uid);
-
-// Admin-scoped base — for run logs and other admin-only collections.
-const ADMIN_BASE =
-    db.collection('artifacts').doc('default-app-id')
-      .collection('users').doc(ADMIN_UID);
-
-// ── 5. Firestore data fetchers ────────────────────────────────
-// Each fetcher uses the EXACT collection names written by the app.
+// ── 5. Supabase data fetchers ─────────────────────────────────
+// Each fetcher queries the flat Supabase table and reconstructs the
+// same shape the email builders / PAGE_MAP already expect.
 
 /**
- * advance_payments collection
- * Fields: code, name, branch, type, description, amount, date, isArchived
+ * advance_payments table
+ * Columns: uid, code, name, branch, type, description, amount, date, is_archived, timestamp
  */
 async function fetchAdvancePayments(uid) {
-    const snap = await BASE(uid).collection('advance_payments')
-        .orderBy('timestamp', 'desc').limit(200).get();
+    const { data, error } = await supabase
+        .from('advance_payments')
+        .select('code, name, branch, type, description, amount, date, is_archived')
+        .eq('uid', uid)
+        .order('timestamp', { ascending: false })
+        .limit(200);
+    if (error) throw error;
+
     const active = [], archived = [];
-    snap.forEach(d => {
-        const data = d.data();
+    for (const d of (data || [])) {
         const row = {
-            code:        data.code        || '—',
-            name:        data.name        || '—',
-            branch:      data.branch      || '—',
-            type:        data.type        || '—',
-            description: data.description || '—',
-            amount:      data.amount != null ? Number(data.amount) : 0,
-            date:        data.date        || '—'
+            code:        d.code        || '—',
+            name:        d.name        || '—',
+            branch:      d.branch      || '—',
+            type:        d.type        || '—',
+            description: d.description || '—',
+            amount:      d.amount != null ? Number(d.amount) : 0,
+            date:        d.date        || '—'
         };
-        if (data.isArchived) archived.push(row);
-        else                 active.push(row);
-    });
+        if (d.is_archived) archived.push(row);
+        else               active.push(row);
+    }
     const totalActive   = active.reduce((s, r) => s + r.amount, 0);
     const totalArchived = archived.reduce((s, r) => s + r.amount, 0);
     return { active, archived, totalActive, totalArchived,
@@ -177,25 +161,27 @@ async function fetchAdvancePayments(uid) {
 }
 
 /**
- * business_analysis_archives collection
- * Fields stored under meta: reportDate, inchargeName, createdBy, createdAt
- * NOTE: total15DaysBusiness does NOT exist in this collection — it only
- * lives in commission_archives. The main archive stores report metadata only.
+ * business_analysis_archives table
+ * Columns: uid, meta (jsonb with reportDate, inchargeName, createdBy, createdAt), timestamp
  */
 async function fetchBusinessStats(uid) {
-    let rows = [];
+    const rows = [];
     try {
-        const snap = await BASE(uid).collection('business_analysis_archives')
-            .orderBy('meta.createdAt', 'desc').limit(50).get();
-        snap.forEach(d => {
-            const data = d.data();
-            const meta = data.meta || {};
+        const { data, error } = await supabase
+            .from('business_analysis_archives')
+            .select('meta')
+            .eq('uid', uid)
+            .order('timestamp', { ascending: false })
+            .limit(50);
+        if (error) throw error;
+        for (const d of (data || [])) {
+            const meta = d.meta || {};
             rows.push({
                 date:      meta.reportDate   || '—',
                 incharge:  meta.inchargeName || '—',
                 createdBy: meta.createdBy    || '—'
             });
-        });
+        }
     } catch (e) {
         console.warn('  ⚠️ business_analysis_archives fetch error:', e.message);
     }
@@ -203,116 +189,109 @@ async function fetchBusinessStats(uid) {
 }
 
 /**
- * donations collection
- * Fields: code, name, branch, type, amount, date, isArchived
+ * donations table
+ * Columns: uid, code, name, branch, type, amount, date, is_archived, timestamp
  */
 async function fetchDonations(uid) {
-    const snap = await BASE(uid).collection('donations')
-        .orderBy('timestamp', 'desc').limit(200).get();
+    const { data, error } = await supabase
+        .from('donations')
+        .select('code, name, branch, type, amount, date, is_archived')
+        .eq('uid', uid)
+        .order('timestamp', { ascending: false })
+        .limit(200);
+    if (error) throw error;
+
     const active = [], archived = [];
-    snap.forEach(d => {
-        const data = d.data();
+    for (const d of (data || [])) {
         const row = {
-            code:   data.code   || '—',
-            name:   data.name   || '—',
-            branch: data.branch || '—',
-            type:   data.type   || '—',
-            amount: data.amount != null ? Number(data.amount) : 0,
-            date:   data.date   || '—'
+            code:   d.code   || '—',
+            name:   d.name   || '—',
+            branch: d.branch || '—',
+            type:   d.type   || '—',
+            amount: d.amount != null ? Number(d.amount) : 0,
+            date:   d.date   || '—'
         };
-        if (data.isArchived) archived.push(row);
-        else                 active.push(row);
-    });
+        if (d.is_archived) archived.push(row);
+        else               active.push(row);
+    }
     const totalActive   = active.reduce((s, r) => s + r.amount, 0);
     const totalArchived = archived.reduce((s, r) => s + r.amount, 0);
     return { active, archived, totalActive, totalArchived };
 }
 
 /**
- * tasks collection
- * Fields: title, date (Timestamp or string), status ('done' | 'pending')
+ * tasks table
+ * Columns: uid, title, date (ISO string), status ('done' | 'pending')
  */
 async function fetchAllTasks(uid) {
-    const snap = await BASE(uid).collection('tasks')
-        .orderBy('date', 'asc').limit(200).get();
+    const { data, error } = await supabase
+        .from('tasks')
+        .select('title, date, status')
+        .eq('uid', uid)
+        .order('date', { ascending: true })
+        .limit(200);
+    if (error) throw error;
+
     const pending = [], done = [];
-    snap.forEach(d => {
-        const data = d.data();
-        let dateStr = '(তারিখ নেই)';
-        if (data.date) {
-            if (data.date.toDate) {
-                const dt = data.date.toDate();
-                dateStr = dt.getFullYear() + '-' +
-                    String(dt.getMonth() + 1).padStart(2, '0') + '-' +
-                    String(dt.getDate()).padStart(2, '0');
-            } else {
-                dateStr = String(data.date).split('T')[0];
-            }
-        }
-        const row = { title: data.title || 'শিরোনামহীন', date: dateStr };
-        if (data.status === 'done') done.push(row);
-        else                        pending.push(row);
-    });
+    for (const d of (data || [])) {
+        const dateStr = d.date ? String(d.date).split('T')[0] : '(তারিখ নেই)';
+        const row = { title: d.title || 'শিরোনামহীন', date: dateStr };
+        if (d.status === 'done') done.push(row);
+        else                     pending.push(row);
+    }
     return { pending, done };
 }
 
 /**
- * office_issues collection
- * Fields: date, description, priority, status ('pending' | 'resolved')
+ * office_issues table
+ * Columns: uid, date, description, priority, status ('pending' | 'resolved'), timestamp
  */
 async function fetchIssues(uid) {
-    const snap = await BASE(uid).collection('office_issues')
-        .orderBy('timestamp', 'desc').limit(200).get();
+    const { data, error } = await supabase
+        .from('office_issues')
+        .select('date, description, priority, status')
+        .eq('uid', uid)
+        .order('timestamp', { ascending: false })
+        .limit(200);
+    if (error) throw error;
+
     const pending = [], resolved = [];
-    snap.forEach(d => {
-        const data = d.data();
+    for (const d of (data || [])) {
         const row = {
-            date:        data.date        || '—',
-            description: (data.description || '—').slice(0, 80),
-            priority:    data.priority    || 'medium',
-            status:      data.status      || 'pending'
+            date:        d.date        || '—',
+            description: (d.description || '—').slice(0, 80),
+            priority:    d.priority    || 'medium',
+            status:      d.status      || 'pending'
         };
-        if (data.status === 'resolved') resolved.push(row);
-        else                            pending.push(row);
-    });
+        if (d.status === 'resolved') resolved.push(row);
+        else                         pending.push(row);
+    }
     return { pending, resolved };
 }
 
 /**
- * FIX 1 (mirrors FIX-22 in send-push.js v5.7):
- * Real Firestore collections confirmed in Firestore console:
- *   'accounts'                  — active premium entries
- *   'accountsArchive_1st_year'  — archived entries
- * The old worker queried accounts_1st_year / accounts_renewal /
- * accounts_deferred / accounts_mr / accounts_loan — none of which exist.
- * Fields: type, slipNo, amount, deposit, balance, date, timestamp
+ * accounts table  (mirrors FIX-22 from send-push.js v5.7)
+ * Columns: uid, type, slip_no, amount, deposit, balance, date, is_archived, timestamp
+ * is_archived=false → active; is_archived=true → archive (was accountsArchive_1st_year)
  */
 async function fetchPremiumStatements(uid) {
-    const COLLECTIONS = [
-        { col: 'accounts',                 label: 'সক্রিয়' },
-        { col: 'accountsArchive_1st_year', label: '১ম বর্ষ আর্কাইভ' },
-    ];
-    const rows = [];
-    for (const { col, label } of COLLECTIONS) {
-        try {
-            const snap = await BASE(uid).collection(col)
-                .orderBy('timestamp', 'desc').limit(200).get();
-            snap.forEach(d => {
-                const data = d.data();
-                rows.push({
-                    type:    data.type   || label,
-                    slipNo:  data.slipNo  || '—',
-                    amount:  data.amount  != null ? Number(data.amount)  : 0,
-                    deposit: data.deposit != null ? Number(data.deposit) : 0,
-                    balance: data.balance != null ? Number(data.balance) : 0,
-                    date:    data.date    || '—'
-                });
-            });
-        } catch (e) {
-            console.warn(`  ⚠️ ${col} fetch error:`, e.message);
-        }
-    }
-    // Sort newest first by date string
+    const { data, error } = await supabase
+        .from('accounts')
+        .select('type, slip_no, amount, deposit, balance, date')
+        .eq('uid', uid)
+        .order('timestamp', { ascending: false })
+        .limit(400);
+    if (error) throw error;
+
+    const rows = (data || []).map(d => ({
+        type:    d.type    || '—',
+        slipNo:  d.slip_no || '—',
+        amount:  d.amount  != null ? Number(d.amount)  : 0,
+        deposit: d.deposit != null ? Number(d.deposit) : 0,
+        balance: d.balance != null ? Number(d.balance) : 0,
+        date:    d.date    || '—'
+    }));
+    // Sort newest first
     rows.sort((a, b) => (b.date > a.date ? 1 : -1));
     const totalDeposit = rows.reduce((s, r) => s + r.deposit, 0);
     const totalBalance = rows.reduce((s, r) => s + r.balance, 0);
@@ -320,6 +299,7 @@ async function fetchPremiumStatements(uid) {
 }
 
 // ── 6. Email template helpers ─────────────────────────────────
+// UNCHANGED from v5.1 — all templates are backend-independent.
 
 const FONT_IMPORT = `<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;600;700&display=swap" rel="stylesheet">`;
 const FONT_STACK  = `'SolaimanLipi', 'Kalpurush', 'Noto Sans Bengali', 'Arial Unicode MS', sans-serif`;
@@ -552,6 +532,7 @@ function sectionTitle(icon, label, count) {
 }
 
 // ── 7. Per-page email builders ────────────────────────────────
+// UNCHANGED from v5.1.
 
 function buildAdvancePaymentEmail({ dateLabel, timeSlot, data, officeName }) {
     const { active, archived, totalActive, totalArchived, grandTotal } = data;
@@ -579,7 +560,7 @@ function buildAdvancePaymentEmail({ dateLabel, timeSlot, data, officeName }) {
 }
 
 function buildBusinessStatsEmail({ dateLabel, timeSlot, data, officeName }) {
-    const { rows, total } = data;
+    const { rows } = data;
     const body = `
         ${sectionTitle('📊', 'সকল ব্যবসা পরিসংখ্যান রিপোর্ট', rows.length)}
         ${tableHTML(['তারিখ','ইনচার্জ','তৈরিকারী'], rows,
@@ -702,6 +683,7 @@ function buildPremiumEmail({ dateLabel, timeSlot, data, officeName }) {
 }
 
 // ── 8. Page definitions ───────────────────────────────────────
+// UNCHANGED from v5.1.
 
 const PAGE_MAP = {
     help: {
@@ -760,19 +742,18 @@ const PAGE_MAP = {
     },
 };
 
-// ── 9. Firestore log writers ──────────────────────────────────
+// ── 9. Supabase log writers ───────────────────────────────────
 //
-//   Per-user:  artifacts/default-app-id/users/{uid}/emailLogs/{auto-id}
-//   Global:    artifacts/default-app-id/users/{adminUID}/emailRunLogs/{auto-id}
+//   Per-user:  email_logs table   (uid, tag, label, …)
+//   Global:    email_run_logs table (uid, tag, label, …)
 //
-// Schema mirrors send-push.js writePushLog so notification-log_module.js
-// can read both collections with identical field names.
+// Schema mirrors push logs so notification-log_module.js can read
+// both tables with identical field names (FIX 6 preserved).
 // ─────────────────────────────────────────────────────────────
 
 async function writeEmailLog(uid, page, targetPageKey, status, recordCount, detail) {
     try {
-        const now = admin.firestore.FieldValue.serverTimestamp();
-        // Map page key to slot hour (mirrors UPCOMING_SCHEDULE in notification-log_module.js)
+        const now = new Date().toISOString();
         const slotHourMap = {
             help:            10,
             office_issue:    12,
@@ -784,35 +765,28 @@ async function writeEmailLog(uid, page, targetPageKey, status, recordCount, deta
         const slotHour = slotHourMap[targetPageKey] ?? null;
 
         const logEntry = {
-            tag:         targetPageKey,
-            label:       page.name,
-            icon:        '📧',
-            status,                      // 'sent' | 'failed' | 'skipped'
-            sentAt:      now,
-            detail:      detail || `${page.name} ইমেইল — ${slotHour}:০০ ঢাকা`,
-            sent:        status === 'sent'    ? 1 : 0,
-            failed:      status === 'failed'  ? 1 : 0,
-            skipped:     status === 'skipped' ? 1 : 0,
-            slotHour,
-            recordCount: recordCount ?? null,
-            // FIX 6: forward-compatibility with push log schema used by
-            // notification-log-backend.js (_normalise). Push logs include
-            // `devices` (per-device delivery list) and `statusKey` (dedup key).
-            // Email logs don't use these but the UI reads them gracefully when
-            // they are present as typed nulls/empty-arrays.
-            devices:     [],
-            statusKey:   null,
+            uid,
+            tag:          targetPageKey,
+            label:        page.name,
+            icon:         '📧',
+            status,
+            sent_at:      now,
+            detail:       detail || `${page.name} ইমেইল — ${slotHour}:০০ ঢাকা`,
+            sent:         status === 'sent'    ? 1 : 0,
+            failed:       status === 'failed'  ? 1 : 0,
+            skipped:      status === 'skipped' ? 1 : 0,
+            slot_hour:    slotHour,
+            record_count: recordCount ?? null,
+            // FIX 6: forward-compatibility with push log schema
+            devices:      [],
+            status_key:   null,
         };
 
         // 1. Per-user email log
-        await db.collection('artifacts').doc('default-app-id')
-            .collection('users').doc(uid)
-            .collection('emailLogs')
-            .add(logEntry);
+        await supabase.from('email_logs').insert(logEntry);
 
-        // 2. Global run log (for summary view on notification-log page)
-        await ADMIN_BASE.collection('emailRunLogs')
-            .add({ ...logEntry, uid });
+        // 2. Global run log
+        await supabase.from('email_run_logs').insert({ ...logEntry, uid });
 
     } catch (err) {
         console.warn(`  ⚠️  writeEmailLog failed (non-fatal): ${err.message}`);
@@ -831,28 +805,30 @@ async function sendEmail({ toEmail, toName, subject, htmlBody }) {
 }
 
 // ── FIX 5: Per-user per-page-key per-date deduplication ───────
-// Mirrors the seenToday pattern in send-push.js.
-// Prevents duplicate emails if the GitHub runner retries after a
-// partial failure (email was sent to some users, worker crashed,
-// then re-ran and sent again to those already-sent users).
+// Uses Supabase upsert on email_sent_today table.
+// Table must have a UNIQUE constraint on (uid, page_key, sent_date).
+// Schema: uid text, page_key text, sent_date date, sent_at timestamptz
 //
-// Flag path:
-//   artifacts/default-app-id/users/{uid}/emailSentToday/{today}_{pageKey}
-// Document: { sentAt: serverTimestamp, page: pageKey }
+// Replaces:
+//   artifacts/.../users/{uid}/emailSentToday/{today}_{pageKey}
 
 async function checkAndMarkSentToday(uid, pageKey, today) {
-    const flagRef = db.collection('artifacts').doc('default-app-id')
-        .collection('users').doc(uid)
-        .collection('emailSentToday').doc(`${today}_${pageKey}`);
-    const snap = await flagRef.get();
-    if (snap.exists) {
-        return false; // already sent today
+    // Try to insert — if the unique row already exists, upsert will no-op
+    // and onConflict:'ignore' causes it to return data=[] rather than an error.
+    const { data, error } = await supabase
+        .from('email_sent_today')
+        .upsert(
+            { uid, page_key: pageKey, sent_date: today, sent_at: new Date().toISOString() },
+            { onConflict: 'uid,page_key,sent_date', ignoreDuplicates: true }
+        )
+        .select('uid');
+
+    if (error) {
+        console.warn(`  ⚠️  checkAndMarkSentToday error: ${error.message} — allowing send`);
+        return true; // fail open so a log error doesn't block all emails
     }
-    await flagRef.set({
-        sentAt: admin.firestore.FieldValue.serverTimestamp(),
-        page: pageKey
-    });
-    return true; // flag written — safe to send
+    // If ignoreDuplicates suppressed the insert, data will be empty → already sent
+    return Array.isArray(data) && data.length > 0;
 }
 
 // ── 11. Main ──────────────────────────────────────────────────
@@ -874,42 +850,49 @@ async function run() {
     const dateLabel = getBengaliDateLabel();
     const today     = getTodayStr();
 
-    console.log(`🚀 Email worker v5 — page: ${targetPageKey} (${page.name})`);
+    console.log(`🚀 Email worker v6 (Supabase) — page: ${targetPageKey} (${page.name})`);
     console.log(`📅 Today (Dhaka): ${today} | UTC: ${new Date().toISOString()}\n`);
 
     let totalSent = 0, totalFailed = 0, totalSkipped = 0;
 
     try {
-        const usersRef  = db.collection('artifacts').doc('default-app-id').collection('users');
-        // [Perf] .select() fetches only doc references with no field payload.
-        // The loop below only needs userDoc.id — no field data required.
-        const usersSnap = await usersRef.select().get();
+        // List all users from admin_profile table (replaces Firestore users collection listing)
+        const { data: users, error: usersError } = await supabase
+            .from('admin_profile')
+            .select('uid');
 
-        if (usersSnap.empty) {
+        if (usersError) throw usersError;
+
+        if (!users || users.length === 0) {
             console.log('ℹ️  No users found.');
             process.exit(0);
         }
-        console.log(`👥 Found ${usersSnap.size} user(s).\n`);
+        console.log(`👥 Found ${users.length} user(s).\n`);
 
-        for (const userDoc of usersSnap.docs) {
-            const uid = userDoc.id;
+        for (const userRow of users) {
+            const uid = userRow.uid;
             console.log(`── User: ${uid}`);
 
-            // Load subscription
+            // Load email subscription
+            // Replaces: users/{uid}/data/emailSubscription doc
             let sub = null;
             try {
-                const subSnap = await usersRef.doc(uid)
-                    .collection('data').doc('emailSubscription').get();
-                if (subSnap.exists) sub = subSnap.data();
+                const { data: subData, error: subError } = await supabase
+                    .from('email_subscriptions')
+                    .select('*')
+                    .eq('uid', uid)
+                    .maybeSingle();
+                if (subError) throw subError;
+                sub = subData;
             } catch (e) {
                 console.log(`  ⚠️  Could not read subscription: ${e.message} — skip.`);
                 totalSkipped++;
                 continue;
             }
 
-            if (!sub)             { console.log(`  ⏭️  No email subscription — skip.`); totalSkipped++; continue; }
-            if (!sub.active)      { console.log(`  ⏭️  Subscription inactive — skip.`);  totalSkipped++; continue; }
-            if (!sub.email)       { console.log(`  ⚠️  No email address — skip.`);        totalSkipped++; continue; }
+            if (!sub)        { console.log(`  ⏭️  No email subscription — skip.`);  totalSkipped++; continue; }
+            if (!sub.active) { console.log(`  ⏭️  Subscription inactive — skip.`);  totalSkipped++; continue; }
+            if (!sub.email)  { console.log(`  ⚠️  No email address — skip.`);       totalSkipped++; continue; }
 
             // Check per-page opt-out
             const pagePrefs   = (sub.prefs && sub.prefs.pages) || {};
@@ -919,11 +902,17 @@ async function run() {
                 totalSkipped++;
                 continue;
             }
-            // Load office name
+
+            // Load office name from admin_profile
+            // Replaces: users/{uid}/data/profile doc → officeName field
             let officeName = null;
             try {
-                const pSnap = await usersRef.doc(uid).collection('data').doc('profile').get();
-                if (pSnap.exists) officeName = pSnap.data().officeName || null;
+                const { data: profile } = await supabase
+                    .from('admin_profile')
+                    .select('office_name')
+                    .eq('uid', uid)
+                    .maybeSingle();
+                if (profile) officeName = profile.office_name || null;
             } catch (_) {}
 
             const toName = officeName || sub.email;
@@ -938,7 +927,7 @@ async function run() {
                     continue;
                 }
 
-                // FIX 5: Deduplication — skip if this user already got this email today
+                // FIX 5: Deduplication
                 const canSend = await checkAndMarkSentToday(uid, targetPageKey, today);
                 if (!canSend) {
                     console.log(`  ⏭️  [${page.name}] already sent today for ${uid} — skip (dedup).`);
@@ -965,12 +954,6 @@ async function run() {
         }
 
     } catch (err) {
-        // Quota circuit-breaker: exit cleanly so GitHub Actions does not mark
-        // the run as a failure — quota resets at midnight UTC automatically.
-        if (err.code === 8 || (err.message && err.message.includes('RESOURCE_EXHAUSTED'))) {
-            console.warn('⚠️  Firestore quota exhausted — exiting cleanly. Quota resets at midnight UTC.');
-            process.exit(0);
-        }
         console.error('❌ Fatal error:', err);
         process.exit(1);
     }
