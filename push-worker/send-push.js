@@ -61,6 +61,9 @@ const { createClient } = require('@supabase/supabase-js');
 const webpush          = require('web-push');
 const fs               = require('fs');
 const path             = require('path');
+// Node.js < 22 has no native WebSocket — the Supabase Realtime client needs
+// the 'ws' package passed explicitly as the transport option.
+const ws               = require('ws');
 
 // ══════════════════════════════════════════════════════════════
 // CONFIGURATION
@@ -320,7 +323,7 @@ function getDB() {
 }
 
 // Must match ADMIN_UID in app-backend.js
-const ADMIN_UID = 'bvBsjVfgErd53b0GLElPjUoKzNW2';
+const ADMIN_UID = 'd4831f3c-2cd8-4598-9acf-fe509614c3af';
 
 function initializeSupabase() {
     if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_SERVICE_ROLE_KEY) {
@@ -332,7 +335,8 @@ function initializeSupabase() {
     }
 
     _supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_SERVICE_ROLE_KEY, {
-        auth: { persistSession: false },
+        auth:     { persistSession: false },
+        realtime: { transport: ws },
     });
 
     logger.info('✅ Supabase initialised', { url: CONFIG.SUPABASE_URL });
