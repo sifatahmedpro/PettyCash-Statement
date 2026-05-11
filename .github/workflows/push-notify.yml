@@ -66,13 +66,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          # No npm cache — avoids failure when package-lock.json path can't be resolved
+          cache: 'npm'
+          cache-dependency-path: push-worker/package-lock.json
 
       # ── Step 3: Install dependencies ──────────────────────────
       - name: Install dependencies
         run: |
           echo "📦 Installing dependencies..."
-          npm install --no-audit --prefer-offline || npm install --no-audit
+          npm ci --no-audit
         working-directory: push-worker
         timeout-minutes: 5
 
