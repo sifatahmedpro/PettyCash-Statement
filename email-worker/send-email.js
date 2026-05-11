@@ -41,6 +41,9 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const nodemailer        = require('nodemailer');
+// Node.js < 22 has no native WebSocket — the Supabase Realtime client needs
+// the 'ws' package passed explicitly as the transport option.
+const ws               = require('ws');
 
 // ── 1. Supabase Admin init ────────────────────────────────────
 // Uses the SERVICE ROLE key (server-side only — never expose in the browser).
@@ -59,7 +62,7 @@ if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
 const supabase = createClient(
     process.env.SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY,
-    { auth: { persistSession: false } }
+    { auth: { persistSession: false }, realtime: { transport: ws } }
 );
 
 // ── 2. Nodemailer transporter ─────────────────────────────────
@@ -121,7 +124,7 @@ function getTargetPage() {
 }
 
 // ── 4. Admin UID (matches app-backend.js) ─────────────────────
-const ADMIN_UID = 'bvBsjVfgErd53b0GLElPjUoKzNW2';
+const ADMIN_UID = 'd4831f3c-2cd8-4598-9acf-fe509614c3af';
 
 // ── 5. Supabase data fetchers ─────────────────────────────────
 // Each fetcher queries the flat Supabase table and reconstructs the
