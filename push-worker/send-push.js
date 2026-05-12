@@ -973,21 +973,26 @@ async function getUserSubscriptions(uid) {
                 logger.warn('Subscription missing endpoint — skipping', { uid, id: s.id });
                 continue;
             }
-            if (!s.keys || !s.keys.p256dh || !s.keys.auth) {
-                logger.warn('Subscription missing keys.p256dh / keys.auth — SKIPPING. ' +
+            // app-backend.js saves keys as flat columns (p256dh, auth_key) rather than
+            // a nested JSONB `keys` object. Support both layouts so this worker works
+            // with the current schema and any future migration to a JSONB `keys` column.
+            const p256dh  = s.keys?.p256dh || s.p256dh   || null;
+            const authKey = s.keys?.auth   || s.auth_key  || null;
+
+            if (!p256dh || !authKey) {
+                logger.warn('Subscription missing p256dh / auth_key — SKIPPING. ' +
                     'User must re-enable push notifications in browser to fix.', {
                     uid, id: s.id,
-                    hasKeys:   !!s.keys,
-                    hasP256dh: !!(s.keys && s.keys.p256dh),
-                    hasAuth:   !!(s.keys && s.keys.auth),
+                    hasP256dh: !!p256dh,
+                    hasAuth:   !!authKey,
                     endpoint:  s.endpoint.slice(0, 40),
                 });
                 continue;
             }
-            // Shape expected by web-push: { endpoint, keys: { p256dh, auth }, deviceName }
+            // Reconstruct the shape web-push expects: { endpoint, keys: { p256dh, auth } }
             valid.push({
                 endpoint:   s.endpoint,
-                keys:       s.keys,
+                keys:       { p256dh, auth: authKey },
                 deviceName: s.device_name || 'Unknown Device',
             });
         }
