@@ -938,12 +938,17 @@ async function writePushLog(uid, module, result, count, statusKey, slotHour, dev
             devices,
         };
 
-        // 1. Per-user log
+        // 1. Per-user log (uid = the actual user who received the push)
         const { error: e1 } = await getDB().from('push_logs').insert(logEntry);
         if (e1) throw e1;
 
         // 2. Global run log (admin summary view)
-        const { error: e2 } = await getDB().from('push_run_logs').insert(logEntry);
+        // FIX: must use ADMIN_UID so fetchPushRunLogs() (which queries by ADMIN_UID) can find these rows.
+        // Previously used the user's uid here, causing push_run_logs to always return 0 rows on the log page.
+        const { error: e2 } = await getDB().from('push_run_logs').insert({
+            ...logEntry,
+            uid: ADMIN_UID,
+        });
         if (e2) logger.warn('push_run_logs insert failed (non-fatal)', { error: e2.message });
 
     } catch (err) {
