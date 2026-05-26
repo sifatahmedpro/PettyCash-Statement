@@ -109,7 +109,7 @@ const HOUR_SCHEDULE = {
             countLabel: 'টি সক্রিয় রেকর্ড', collection: 'advance_payments', countField: null,
         },
         {
-            tag: 'manpower', icon: '👥', title: 'জনবল তথ্য',
+            tag: 'manpower', icon: '👥', title: 'জনবল ব্যবস্থাপনা',
             body: 'আজকের জনবল তালিকা পর্যালোচনা করুন।',
             countLabel: 'টি কর্মী',
             isSingleDoc: true, docKey: 'manpower',
@@ -126,12 +126,12 @@ const HOUR_SCHEDULE = {
 
     8: [
         {
-            tag: 'fund-archive', icon: '🏦', title: 'ফান্ড আর্কাইভ',
+            tag: 'fund-archive', icon: '🏦', title: 'ফান্ড ব্যবস্থাপনা',
             body: 'ফান্ড আর্কাইভ রেকর্ড পর্যালোচনা করুন।',
             countLabel: 'টি ফান্ড এন্ট্রি', collection: 'logs', orderByField: 'created_at',
         },
         {
-            tag: 'hbl-recovery', icon: '🏧', title: 'HBL রিকভারি',
+            tag: 'hbl-recovery', icon: '🏧', title: 'গৃহ ঋণ পরিশোধ',
             body: 'HBL রিকভারি রেকর্ড পর্যালোচনা করুন।',
             countLabel: 'টি রিকভারি রেকর্ড', collection: 'hbl_recovery_records', countField: null,
         },
@@ -145,11 +145,11 @@ const HOUR_SCHEDULE = {
 
     10: [
         {
-            tag: 'task-manager', icon: '📋', title: 'টাস্ক ম্যানেজার',
+            tag: 'task-manager', icon: '📋', title: 'টাস্ক ব্যবস্থাপনা',
             body: null, isTaskReminder: true,
         },
         {
-            tag: 'office-issue', icon: '🆕', title: 'অফিস সমস্যা',
+            tag: 'office-issue', icon: '🆕', title: 'সমস্যা ও সমাধান',
             body: 'অফিসের সমস্যা সমাধান তালিকা দেখুন।',
             countLabel: 'টি অমীমাংসিত সমস্যা', collection: 'office_issues',
         },
@@ -162,7 +162,7 @@ const HOUR_SCHEDULE = {
 
     12: [
         {
-            tag: 'lunch-allowance', icon: '🍱', title: 'লাঞ্চ ভাতা',
+            tag: 'lunch-allowance', icon: '🍱', title: 'লাঞ্চ ভাতা ব্যবস্থাপনা',
             body: 'লাঞ্চ ভাতার রেকর্ড পর্যালোচনা করুন।', staticOnly: true,
         },
         {
@@ -171,7 +171,7 @@ const HOUR_SCHEDULE = {
             countLabel: 'টি বিল রেকর্ড', collection: 'transport_bill_archive', countField: null,
         },
         {
-            tag: 'business-stats', icon: '📊', title: 'ব্যবসায়িক পরিসংখ্যান',
+            tag: 'business-stats', icon: '📊', title: 'ব্যবসা পরিসংখ্যান',
             body: 'ব্যবসায়িক পরিসংখ্যান রিপোর্ট দেখুন।',
             countLabel: 'টি রিপোর্ট', collection: 'business_analysis_archives',
             orderByField: 'meta->createdAt', countField: null,
@@ -180,16 +180,16 @@ const HOUR_SCHEDULE = {
 
     14: [
         {
-            tag: 'various-calculators', icon: '🧮', title: 'বিভিন্ন ক্যালকুলেটর',
+            tag: 'various-calculators', icon: '🧮', title: 'বিবিধ হিসাব',
             body: 'আজকের হিসাব-নিকাশের জন্য ক্যালকুলেটর ব্যবহার করুন।', staticOnly: true,
         },
         {
-            tag: 'stationary-item', icon: '✏️', title: 'স্টেশনারী আইটেম',
+            tag: 'stationary-item', icon: '✏️', title: 'মুদ্রণ সামগ্রী সরবরাহ',
             body: 'স্টেশনারী রিপোর্ট পর্যালোচনা করুন।',
             countLabel: 'টি রিপোর্ট', collection: 'stationary_reports', countField: null,
         },
         {
-            tag: 'medical-bill', icon: '🏥', title: 'মেডিকেল বিল',
+            tag: 'medical-bill', icon: '🏥', title: 'মেডিক্যাল বিল',
             body: 'মেডিকেল বিল আর্কাইভ পর্যালোচনা করুন।',
             countLabel: 'টি রেকর্ড', collection: 'archives_medical_bills_reports', countField: null,
         },
@@ -197,12 +197,12 @@ const HOUR_SCHEDULE = {
 
     16: [
         {
-            tag: 'ta-bill', icon: '🚗', title: 'ভ্রমণ বিল (TA)',
+            tag: 'ta-bill', icon: '🚗', title: 'ভ্রমণ বিল',
             body: 'ভ্রমণ বিলের রেকর্ড পর্যালোচনা করুন।',
             countLabel: 'টি বিল', collection: 'ta_bills', orderByField: 'saved_at', countField: null,
         },
         {
-            tag: 'license-forwarding', icon: '📜', title: 'লাইসেন্স ফরওয়ার্ডিং',
+            tag: 'license-forwarding', icon: '📜', title: 'লাইসেন্স ফরোয়ার্ডিং এন্ট্রি',
             body: 'লাইসেন্স ফরওয়ার্ডিং এন্ট্রি পর্যালোচনা করুন।',
             countLabel: 'টি এন্ট্রি', collection: 'license_archive', countField: null,
         },
@@ -229,7 +229,7 @@ const HOUR_SCHEDULE = {
 
     20: [
         {
-            tag: 'donation', icon: '🤲', title: 'দান/চাঁদা',
+            tag: 'donation', icon: '🤲', title: 'অনুদান',
             body: 'দান ও চাঁদার রেকর্ড পর্যালোচনা করুন।',
             countLabel: 'টি রেকর্ড', collection: 'donations', countField: null,
         },
@@ -239,17 +239,17 @@ const HOUR_SCHEDULE = {
 
     22: [
         {
-            tag: 'proposal-index', icon: '📑', title: 'প্রস্তাবপত্র ইন্ডেক্স',
+            tag: 'proposal-index', icon: '📑', title: 'প্রস্তাবপত্র রেজিস্টার',
             body: 'প্রস্তাবপত্র রেজিস্টার পর্যালোচনা করুন।',
             countLabel: 'টি প্রস্তাবপত্র', collection: 'proposals', countField: null,
         },
         {
-            tag: 'fpr-register', icon: '📒', title: 'FPR রেজিস্টার',
+            tag: 'fpr-register', icon: '📒', title: 'এফপিআর রেজিস্টার',
             body: 'FPR রেজিস্টার পর্যালোচনা করুন।',
             countLabel: 'টি FPR এন্ট্রি', collection: 'fprEntries', countField: null,
         },
         {
-            tag: 'license-archive', icon: '🗃️', title: 'লাইসেন্স আর্কাইভ',
+            tag: 'license-archive', icon: '🗃️', title: 'লাইসেন্স ফরোয়ার্ডিং আর্কাইভ',
             body: 'এজেন্সি নিবন্ধন আর্কাইভ পর্যালোচনা করুন।',
             countLabel: 'টি আর্কাইভ এন্ট্রি', collection: 'license_archive', countField: null,
         },
