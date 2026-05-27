@@ -788,8 +788,12 @@ async function writeEmailLog(uid, page, targetPageKey, status, recordCount, deta
         // 1. Per-user email log
         await supabase.from('email_logs').insert(logEntry);
 
-        // 2. Global run log
-        await supabase.from('email_run_logs').insert({ ...logEntry, uid });
+        // 2. Global run log — MUST use ADMIN_UID so fetchEmailRunLogs()
+        // (which queries .eq('uid', ADMIN_UID)) can find these rows.
+        // Previously passed the user's uid here, causing the notification
+        // log page to always return 0 email run log rows. Mirrors the
+        // identical fix already present in send-push.js writePushLog().
+        await supabase.from('email_run_logs').insert({ ...logEntry, uid: ADMIN_UID });
 
     } catch (err) {
         console.warn(`  ⚠️  writeEmailLog failed (non-fatal): ${err.message}`);
