@@ -710,7 +710,12 @@ const PAGE_MAP = {
     business_stats: {
         name: 'ব্যবসা পরিসংখ্যান', icon: '📊', timeSlot: '⏰ বিকাল ২টা',
         fetch:      (uid) => fetchBusinessStats(uid),
-        isEmpty:    (data) => data.rows.length === 0,
+        // FIX: Never treat 0 rows as "empty" for business_stats.
+        // The business_analysis_archives table may genuinely be empty while the
+        // system is new — we still want to (a) write a run-log row so the
+        // notification-log page shows > 0 email entries, and (b) send the email
+        // so the subscriber knows no reports have been archived yet.
+        isEmpty:    (_data) => false,
         totalRows:  (data) => data.rows.length,
         buildEmail: (p)   => buildBusinessStatsEmail(p),
         subject:    (dateLabel, data) =>
@@ -897,9 +902,26 @@ async function run() {
                 continue;
             }
 
-            if (!sub)        { console.log(`  ⏭️  No email subscription — skip.`);  totalSkipped++; continue; }
-            if (!sub.active) { console.log(`  ⏭️  Subscription inactive — skip.`);  totalSkipped++; continue; }
-            if (!sub.email)  { console.log(`  ⚠️  No email address — skip.`);       totalSkipped++; continue; }
+            if (!sub) {
+                console.log(`  ⏭️  No email subscription — skip.`);
+                totalSkipped++;
+                // FIX: Write a run-log row even for subscription-missing skips so
+                // the notification-log page email count is never 0 after a run.
+                await writeEmailLog(uid, page, targetPageKey, 'skipped', 0, `${page.name} — ইমেইল সাবস্ক্রিপশন নেই`);
+                continue;
+            }
+            if (!sub.active) {
+                console.log(`  ⏭️  Subscription inactive — skip.`);
+                totalSkipped++;
+                await writeEmailLog(uid, page, targetPageKey, 'skipped', 0, `${page.name} — সাবস্ক্রিপশন নিষ্ক্রিয়`);
+                continue;
+            }
+            if (!sub.email) {
+                console.log(`  ⚠️  No email address — skip.`);
+                totalSkipped++;
+                await writeEmailLog(uid, page, targetPageKey, 'skipped', 0, `${page.name} — ইমেইল ঠিকানা নেই`);
+                continue;
+            }
 
             // Check per-page opt-out
             const pagePrefs   = (sub.prefs && sub.prefs.pages) || {};
@@ -907,6 +929,7 @@ async function run() {
             if (!pageEnabled) {
                 console.log(`  ⏭️  [${page.name}] opted out — skip.`);
                 totalSkipped++;
+                await writeEmailLog(uid, page, targetPageKey, 'skipped', 0, `${page.name} — এই পেজ থেকে অপ্ট-আউট করা হয়েছে`);
                 continue;
             }
 
