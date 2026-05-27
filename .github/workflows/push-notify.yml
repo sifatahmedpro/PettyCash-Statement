@@ -320,8 +320,8 @@ jobs:
         with:
           server_address: ${{ secrets.MAIL_SERVER }}
           server_port:    ${{ secrets.MAIL_PORT }}
-          username:       ${{ secrets.MAIL_USERNAME }}
-          password:       ${{ secrets.MAIL_PASSWORD }}
+          username:       ${{ secrets.GMAIL_USER }}
+          password:       ${{ secrets.GMAIL_APP_PASSWORD }}
           subject:        '❌ Web Push Workflow Failed — Run #${{ github.run_number }} (${{ steps.dhaka_time.outputs.slot_name }})'
           to:             ${{ secrets.FAILURE_NOTIFY_EMAIL || 'noreply@example.com' }}
           from:           'github-actions@officemanagement.app'
