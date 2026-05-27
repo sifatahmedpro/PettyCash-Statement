@@ -1062,9 +1062,20 @@ async function sendModuleNotificationToUser(uid, module, subscriptions, slotHour
         }
     }
 
-    if ((result.pushed > 0 || result.errors > 0) && !CONFIG.DRY_RUN) {
-        if (result.pushed > 0) await markSeenToday(uid, statusKey);
-        await writePushLog(uid, module, result, count, statusKey, slotHour, deviceResults);
+    // FIX: write a log entry for every module attempt — not just when pushes succeed.
+    // Previously if all devices failed (errors > 0, pushed = 0) nothing was logged.
+    // Now we log 'sent', 'failed', or 'skipped' for every attempt so the run-log
+    // page always shows a complete record of what the worker did.
+    if (!CONFIG.DRY_RUN) {
+        if (result.pushed > 0 || result.errors > 0) {
+            if (result.pushed > 0) await markSeenToday(uid, statusKey);
+            await writePushLog(uid, module, result, count, statusKey, slotHour, deviceResults);
+        } else if (result.skipped === 0) {
+            // No subscriptions reached but also not already counted as skipped above —
+            // write a skipped entry so the slot is visible in the log.
+            await writePushLog(uid, module, { pushed: 0, skipped: 1, errors: 0 },
+                count, statusKey, slotHour, []);
+        }
     }
 
     return result;
@@ -1189,9 +1200,11 @@ async function processUserAtHour(uid, dhakaHour, today) {
         logger.debug('No valid push subscriptions for user', { uid });
 
         // Write a skipped log for each module (Fix B — preserved)
+        // FIX: also write to push_run_logs (uid=ADMIN_UID) so the global
+        // run summary on the notification-log page is never 0 after a run.
         for (const module of modules) {
             try {
-                await getDB().from('push_logs').insert({
+                const skippedEntry = {
                     uid,
                     tag:          module.tag,
                     label:        module.title || module.tag,
@@ -1207,7 +1220,10 @@ async function processUserAtHour(uid, dhakaHour, today) {
                     run_id:       CONFIG.RUN_ID,
                     record_count: null,
                     devices:      [],
-                });
+                };
+                await getDB().from('push_logs').insert(skippedEntry);
+                // Global run log — must use ADMIN_UID (mirrors writePushLog fix)
+                await getDB().from('push_run_logs').insert({ ...skippedEntry, uid: ADMIN_UID });
             } catch (logErr) {
                 logger.warn('Failed to write skipped log for module', { uid, tag: module.tag, error: logErr.message });
             }
