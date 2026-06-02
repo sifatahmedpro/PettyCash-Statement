@@ -149,7 +149,7 @@ const HOUR_SCHEDULE = {
             body: null, isTaskReminder: true,
         },
         {
-            tag: 'office-issue', icon: '🆕', title: 'সমস্যা ও সমাধান',
+            tag: 'office-issue', icon: '🆕', title: 'অফিস সমস্যা ও সমাধান',
             body: 'অফিসের সমস্যা সমাধান তালিকা দেখুন।',
             countLabel: 'টি অমীমাংসিত সমস্যা', collection: 'office_issues',
         },
@@ -189,8 +189,8 @@ const HOUR_SCHEDULE = {
             countLabel: 'টি রিপোর্ট', collection: 'stationary_reports', countField: null,
         },
         {
-            tag: 'medical-bill', icon: '🏥', title: 'মেডিক্যাল বিল',
-            body: 'মেডিকেল বিল আর্কাইভ পর্যালোচনা করুন।',
+            tag: 'medical-bill', icon: '🏥', title: 'মেডিকেল বিল পরিশোধ',
+            body: 'মেডিকেল বিল পরিশোধ আর্কাইভ পর্যালোচনা করুন।',
             countLabel: 'টি রেকর্ড', collection: 'archives_medical_bills_reports', countField: null,
         },
     ],
