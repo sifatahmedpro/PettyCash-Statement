@@ -141,6 +141,14 @@ const HOUR_SCHEDULE = {
             countLabel: 'টি পেমেন্ট রেকর্ড', collection: 'vatPayments',
             orderByField: 'created_at', countField: null,
         },
+
+        {
+            tag: 'revenue-entry', icon: '💵', title: 'রেভিনিউ এন্ট্রি',
+            body: 'আজকের রেভিনিউ এন্ট্রি পর্যালোচনা করুন।',
+            countLabel: 'টি এন্ট্রি', collection: 'revenue_entries', countField: null,
+        },
+
+
     ],
 
     10: [
