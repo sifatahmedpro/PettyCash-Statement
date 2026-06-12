@@ -325,11 +325,11 @@ function priorityBadge(priority) {
         low:    { bg: '#dcfce7', color: '#16a34a', border: '#86efac', label: 'কম' },
     };
     const s = map[priority] || map.medium;
-    return `<span style="display:inline-block;padding:2px 9px;border-radius:20px;font-size:.75rem;font-weight:700;background:${s.bg};color:${s.color};border:1px solid ${s.border}">${s.label}</span>`;
+    return `<span style="display:inline-block;padding:2px 9px;border-radius:20px;font-size:16px;font-weight:900;background:${s.bg};color:${s.color};border:1px solid ${s.border}">${s.label}</span>`;
 }
 
 function typeBadge(label, accent = '#251577') {
-    return `<span style="display:inline-block;padding:2px 9px;border-radius:20px;font-size:.75rem;font-weight:600;background:#eef0fc;color:${accent};border:1px solid #c7cef5">${label}</span>`;
+    return `<span style="display:inline-block;padding:2px 9px;border-radius:20px;font-size:16px;font-weight:900;background:#eef0fc;color:${accent};border:1px solid #c7cef5">${label}</span>`;
 }
 
 function emailShell({ headerAccent = '#251577', headerAccent2 = '#3730a3', icon, title,
@@ -341,9 +341,9 @@ function emailShell({ headerAccent = '#251577', headerAccent2 = '#3730a3', icon,
             ${statCards.map(c => `
             <td width="${Math.floor(100 / statCards.length)}%" style="padding:0 6px 0 0">
                 <div style="background:#f5f5ff;border:1.5px solid #dde0f8;border-radius:10px;padding:14px 12px;text-align:center">
-                    <div style="font-size:1.4rem;line-height:1">${c.icon}</div>
-                    <div style="font-size:1.25rem;font-weight:700;color:#251577;margin:6px 0 2px;font-family:${FONT_STACK}">${c.value}</div>
-                    <div style="font-size:.73rem;color:#6b7280;font-family:${FONT_STACK}">${c.label}</div>
+                    <div style="font-size:24px;line-height:1">${c.icon}</div>
+                    <div style="font-size:16px;font-weight:900;color:#251577;margin:6px 0 2px;font-family:${FONT_STACK}">${c.value}</div>
+                    <div style="font-size:16px;color:#6b7280;font-family:${FONT_STACK}">${c.label}</div>
                 </div>
             </td>`).join('')}
         </tr>
@@ -385,12 +385,12 @@ ${FONT_IMPORT}
             <table role="presentation" cellpadding="0" cellspacing="0">
               <tr>
                 <td style="background:rgba(255,255,255,.18);border-radius:10px;padding:6px 14px">
-                  <span style="color:#ffffff;font-size:.8rem;font-weight:700;font-family:${FONT_STACK}">
+                  <span style="color:#ffffff;font-size:16px;font-weight:900;font-family:${FONT_STACK}">
                     🏢 অফিস ম্যানেজমেন্ট সিস্টেম
                   </span>
                 </td>
                 <td style="padding-left:10px">
-                  ${officeName ? `<span style="color:rgba(255,255,255,.85);font-size:.78rem;font-family:${FONT_STACK}">📍 ${officeName}</span>` : ''}
+                  ${officeName ? `<span style="color:rgba(255,255,255,.85);font-size:16px;font-family:${FONT_STACK}">📍 ${officeName}</span>` : ''}
                 </td>
               </tr>
             </table>
@@ -402,12 +402,12 @@ ${FONT_IMPORT}
           <td align="center" style="padding:10px 28px 20px">
             <div style="width:64px;height:64px;background:rgba(255,255,255,.2);border-radius:50%;
                         display:inline-flex;align-items:center;justify-content:center;
-                        font-size:2rem;line-height:64px;margin-bottom:12px">${icon}</div>
-            <h1 style="margin:0 0 6px;color:#ffffff;font-size:1.45rem;font-weight:700;font-family:${FONT_STACK}">${title}</h1>
-            ${subtitle ? `<p style="margin:0 0 8px;color:rgba(255,255,255,.8);font-size:.85rem;font-family:${FONT_STACK}">${subtitle}</p>` : ''}
+                        font-size:32px;line-height:64px;margin-bottom:12px">${icon}</div>
+            <h1 style="margin:0 0 6px;color:#ffffff;font-size:24px;font-weight:900;font-family:${FONT_STACK}">${title}</h1>
+            ${subtitle ? `<p style="margin:0 0 8px;color:rgba(255,255,255,.8);font-size:16px;font-family:${FONT_STACK}">${subtitle}</p>` : ''}
             <div style="display:inline-block;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.35);
                         border-radius:20px;padding:5px 16px;margin-top:4px">
-              <span style="color:#ffffff;font-size:.82rem;font-family:${FONT_STACK}">${timeSlot} &nbsp;·&nbsp; ${dateLabel}</span>
+              <span style="color:#ffffff;font-size:16px;font-family:${FONT_STACK}">${timeSlot} &nbsp;·&nbsp; ${dateLabel}</span>
             </div>
           </td>
         </tr>
@@ -425,10 +425,10 @@ ${FONT_IMPORT}
         <tr>
           <td style="background:linear-gradient(135deg,#f5f5ff,#eef0fc);border:1.5px solid #dde0f8;
                      border-radius:12px;padding:16px 20px">
-            <p style="margin:0 0 6px;font-size:.82rem;font-weight:700;color:#251577;font-family:${FONT_STACK}">
+            <p style="margin:0 0 6px;font-size:.832px;font-weight:900;color:#251577;font-family:${FONT_STACK}">
               💡 দ্রুত টিপস
             </p>
-            <p style="margin:0;font-size:.8rem;color:#4b5563;line-height:1.6;font-family:${FONT_STACK}">
+            <p style="margin:0;font-size:16px;color:#4b5563;line-height:1.6;font-family:${FONT_STACK}">
               নিয়মিত রেকর্ড আপডেট রাখুন। কোনো মুলতবি কাজ থাকলে দ্রুত সম্পন্ন করুন।
             </p>
           </td>
@@ -443,10 +443,10 @@ ${FONT_IMPORT}
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
         <tr>
           <td>
-            <p style="margin:0 0 4px;color:rgba(255,255,255,.9);font-size:.82rem;font-weight:700;font-family:${FONT_STACK}">
+            <p style="margin:0 0 4px;color:rgba(255,255,255,.9);font-size:.832px;font-weight:900;font-family:${FONT_STACK}">
               অফিস ম্যানেজমেন্ট সিস্টেম
             </p>
-            <p style="margin:0;color:rgba(255,255,255,.5);font-size:.75rem;font-family:${FONT_STACK}">
+            <p style="margin:0;color:rgba(255,255,255,.5);font-size:16px;font-family:${FONT_STACK}">
               এই ইমেইল স্বয়ংক্রিয়ভাবে পাঠানো হয়েছে। ইমেইল বন্ধ করতে অ্যাকাউন্ট সেটিংসে যান।
             </p>
           </td>
@@ -471,8 +471,8 @@ function tableHTML(headers, rows, emptyMsg, { amountCols = [], badgeCols = {}, r
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
           <tr>
             <td align="center" style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:12px;padding:20px">
-              <div style="font-size:1.5rem;margin-bottom:8px">✅</div>
-              <p style="margin:0;color:#15803d;font-size:.88rem;font-weight:600;font-family:${FONT_STACK}">${emptyMsg}</p>
+              <div style="font-size:24pxmargin-bottom:8px">✅</div>
+              <p style="margin:0;color:#15803d;font-size:16px;font-weight:900;font-family:${FONT_STACK}">${emptyMsg}</p>
             </td>
           </tr>
         </table>`;
@@ -480,8 +480,8 @@ function tableHTML(headers, rows, emptyMsg, { amountCols = [], badgeCols = {}, r
 
     const displayRows = rows.slice(0, rowLimit);
     const extraRows   = rows.length - displayRows.length;
-    const thStyle = `padding:10px 12px;text-align:left;font-size:.78rem;color:#ffffff;
-                     font-weight:700;background:#251577;font-family:${FONT_STACK};white-space:nowrap`;
+    const thStyle = `padding:10px 12px;text-align:left;font-size:16px;color:#ffffff;
+                     font-weight:900;background:#251577;font-family:${FONT_STACK};white-space:nowrap`;
     const ths = headers.map(h => `<th style="${thStyle}">${h}</th>`).join('');
 
     const trs = displayRows.map((row, i) => {
@@ -495,13 +495,13 @@ function tableHTML(headers, rows, emptyMsg, { amountCols = [], badgeCols = {}, r
             if (badgeCols[key] === 'priority') cell = priorityBadge(String(v));
             else if (badgeCols[key] === 'type') cell = typeBadge(String(v));
             return `<td style="padding:9px 12px;border-bottom:1px solid #ebebfc;color:#1f2937;
-                               font-size:.83rem;font-family:${FONT_STACK};vertical-align:middle">${cell}</td>`;
+                               font-size:16px;font-family:${FONT_STACK};vertical-align:middle">${cell}</td>`;
         }).join('');
         return `<tr style="background:${bg}">${tds}</tr>`;
     }).join('');
 
     const extraNote = extraRows > 0
-        ? `<tr><td colspan="${headers.length}" style="padding:8px 12px;font-size:.78rem;
+        ? `<tr><td colspan="${headers.length}" style="padding:8px 12px;font-size:16px;
                color:#6b7280;text-align:center;font-family:${FONT_STACK}">
                আরও ${toBnNum(extraRows)}টি রেকর্ড আছে — অ্যাপে দেখুন।
            </td></tr>`
@@ -522,11 +522,11 @@ function sectionTitle(icon, label, count) {
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 14px">
       <tr>
         <td style="border-left:4px solid #251577;padding-left:12px">
-          <span style="font-size:.95rem;font-weight:700;color:#251577;font-family:${FONT_STACK}">
+          <span style="font-size:16px;font-weight:900;color:#251577;font-family:${FONT_STACK}">
             ${icon} ${label}
           </span>
-          <span style="margin-left:8px;background:#251577;color:#fff;font-size:.72rem;
-                       padding:2px 8px;border-radius:20px;font-weight:700;font-family:${FONT_STACK}">
+          <span style="margin-left:8px;background:#251577;color:#fff;font-size:16px;
+                       padding:2px 8px;border-radius:20px;font-weight:900;font-family:${FONT_STACK}">
             ${toBnNum(count)}টি
           </span>
         </td>
@@ -543,11 +543,11 @@ function buildAdvancePaymentEmail({ dateLabel, timeSlot, data, officeName }) {
         ${sectionTitle('✅', 'সক্রিয় পরিশোধ রেকর্ড', active.length)}
         ${tableHTML(['কোড','নাম','শাখা','ধরণ','বিবরণ','টাকা','তারিখ'], active,
             'কোনো সক্রিয় রেকর্ড নেই।', { amountCols: ['amount'], badgeCols: { type: 'type' } })}
-        ${active.length > 0 ? `<p style="text-align:right;font-weight:700;color:#0f766e;font-family:${FONT_STACK};margin:8px 0 24px">সক্রিয় মোট: ${formatTaka(totalActive)}</p>` : ''}
+        ${active.length > 0 ? `<p style="text-align:right;font-weight:900;color:#0f766e;font-family:${FONT_STACK};margin:8px 0 24px">সক্রিয় মোট: ${formatTaka(totalActive)}</p>` : ''}
         ${sectionTitle('📦', 'আর্কাইভ রেকর্ড', archived.length)}
         ${tableHTML(['কোড','নাম','শাখা','ধরণ','বিবরণ','টাকা','তারিখ'], archived,
             'কোনো আর্কাইভ রেকর্ড নেই।', { amountCols: ['amount'], badgeCols: { type: 'type' } })}
-        ${archived.length > 0 ? `<p style="text-align:right;font-weight:700;color:#6b7280;font-family:${FONT_STACK};margin:8px 0 0">আর্কাইভ মোট: ${formatTaka(totalArchived)}</p>` : ''}`;
+        ${archived.length > 0 ? `<p style="text-align:right;font-weight:900;color:#6b7280;font-family:${FONT_STACK};margin:8px 0 0">আর্কাইভ মোট: ${formatTaka(totalArchived)}</p>` : ''}`;
     return emailShell({
         headerAccent: '#0f766e', headerAccent2: '#0d9488',
         icon: '💵', title: 'অগ্রিম পরিশোধ — সম্পূর্ণ তালিকা',
@@ -585,11 +585,11 @@ function buildDonationEmail({ dateLabel, timeSlot, data, officeName }) {
         ${sectionTitle('✅', 'সক্রিয় অনুদান রেকর্ড', active.length)}
         ${tableHTML(['কোড','নাম','শাখা','ধরণ','টাকা','তারিখ'], active,
             'কোনো সক্রিয় অনুদান রেকর্ড নেই।', { amountCols: ['amount'], badgeCols: { type: 'type' } })}
-        ${active.length > 0 ? `<p style="text-align:right;font-weight:700;color:#7c3aed;font-family:${FONT_STACK};margin:8px 0 24px">সক্রিয় মোট: ${formatTaka(totalActive)}</p>` : ''}
+        ${active.length > 0 ? `<p style="text-align:right;font-weight:900;color:#7c3aed;font-family:${FONT_STACK};margin:8px 0 24px">সক্রিয় মোট: ${formatTaka(totalActive)}</p>` : ''}
         ${sectionTitle('📦', 'আর্কাইভ রেকর্ড', archived.length)}
         ${tableHTML(['কোড','নাম','শাখা','ধরণ','টাকা','তারিখ'], archived,
             'কোনো আর্কাইভ রেকর্ড নেই।', { amountCols: ['amount'], badgeCols: { type: 'type' } })}
-        ${archived.length > 0 ? `<p style="text-align:right;font-weight:700;color:#6b7280;font-family:${FONT_STACK};margin:8px 0 0">আর্কাইভ মোট: ${formatTaka(totalArchived)}</p>` : ''}`;
+        ${archived.length > 0 ? `<p style="text-align:right;font-weight:900;color:#6b7280;font-family:${FONT_STACK};margin:8px 0 0">আর্কাইভ মোট: ${formatTaka(totalArchived)}</p>` : ''}`;
     return emailShell({
         headerAccent: '#7c3aed', headerAccent2: '#251577',
         icon: '🤝', title: 'অনুদান — সম্পূর্ণ তালিকা',
@@ -609,7 +609,7 @@ function buildHelpEmail({ dateLabel, timeSlot, data, officeName }) {
     const overdue = pending.filter(r => r.date !== '(তারিখ নেই)' && r.date < today).length;
     const body = `
         ${sectionTitle('⏳', 'মুলতবি টাস্কসমূহ', pending.length)}
-        ${pending.length > 0 ? `<p style="font-size:.82rem;color:#dc2626;font-weight:600;margin:0 0 12px;font-family:${FONT_STACK}">
+        ${pending.length > 0 ? `<p style="font-size:.832px;color:#dc2626;font-weight:600;margin:0 0 12px;font-family:${FONT_STACK}">
             ⚠️ এই টাস্কগুলো এখনও সম্পন্ন হয়নি। দ্রুত সম্পন্ন করুন।</p>` : ''}
         ${tableHTML(['টাস্কের শিরোনাম','নির্ধারিত তারিখ'], pending,
             'অভিনন্দন! সকল টাস্ক সম্পন্ন হয়েছে।')}
@@ -634,7 +634,7 @@ function buildIssueEmail({ dateLabel, timeSlot, data, officeName }) {
     const highCount = pending.filter(r => r.priority === 'high').length;
     const body = `
         ${sectionTitle('⚠️', 'চলমান সমস্যাসমূহ', pending.length)}
-        ${highCount > 0 ? `<p style="font-size:.82rem;color:#dc2626;font-weight:600;margin:0 0 12px;font-family:${FONT_STACK}">
+        ${highCount > 0 ? `<p style="font-size:.832px;color:#dc2626;font-weight:600;margin:0 0 12px;font-family:${FONT_STACK}">
             🔴 ${toBnNum(highCount)}টি উচ্চ-গুরুত্বের সমস্যা রয়েছে — তাৎক্ষণিক পদক্ষেপ নিন।</p>` : ''}
         ${tableHTML(['তারিখ','সমস্যার বিবরণ','গুরুত্ব'], pending,
             'কোনো চলমান সমস্যা নেই। সবকিছু ঠিকঠাক আছে!', { badgeCols: { priority: 'priority' } })}
@@ -643,7 +643,7 @@ function buildIssueEmail({ dateLabel, timeSlot, data, officeName }) {
             'কোনো সমাধানকৃত সমস্যা নেই।', { badgeCols: { priority: 'priority' } })}`;
     return emailShell({
         headerAccent: '#dc2626', headerAccent2: '#9f1239',
-        icon: '⚠️', title: 'সমস্যা ও সমাধান — সম্পূর্ণ তালিকা',
+        icon: '⚠️', title: 'অফিস সমস্যা ও সমাধান — সম্পূর্ণ তালিকা',
         subtitle: 'চলমান ও সমাধানকৃত সকল সমস্যার স্ট্যাটাস',
         dateLabel, timeSlot, officeName, bodyHTML: body,
         statCards: [
@@ -669,7 +669,7 @@ function buildPremiumEmail({ dateLabel, timeSlot, data, officeName }) {
         ${tableHTML(['ধরণ','স্লিপ নং','টাকা','জমা','বকেয়া','তারিখ'], formattedRows,
             'কোনো প্রিমিয়াম জমার রেকর্ড নেই।', { badgeCols: { type: 'type' } })}
         ${rows.length > 0 ? `
-        <p style="text-align:right;font-weight:700;color:#0369a1;font-family:${FONT_STACK};margin:8px 0 0">
+        <p style="text-align:right;font-weight:900;color:#0369a1;font-family:${FONT_STACK};margin:8px 0 0">
           মোট জমা: ${formatTaka(totalDeposit)} &nbsp;|&nbsp; মোট বকেয়া: ${formatTaka(totalBalance)}
         </p>` : ''}`;
     return emailShell({
@@ -699,13 +699,13 @@ const PAGE_MAP = {
             `📋 সহায়তা — মুলতবি: ${data.pending.length}টি · সম্পন্ন: ${data.done.length}টি · ${dateLabel}`,
     },
     office_issue: {
-        name: 'সমস্যা ও সমাধান', icon: '⚠️', timeSlot: '⏰ দুপুর ১২টা',
+        name: 'অফিস সমস্যা ও সমাধান', icon: '⚠️', timeSlot: '⏰ দুপুর ১২টা',
         fetch:      (uid) => fetchIssues(uid),
         isEmpty:    (data) => data.pending.length === 0 && data.resolved.length === 0,
         totalRows:  (data) => data.pending.length + data.resolved.length,
         buildEmail: (p)   => buildIssueEmail(p),
         subject:    (dateLabel, data) =>
-            `⚠️ সমস্যা ও সমাধান — চলমান: ${data.pending.length}টি · সমাধান: ${data.resolved.length}টি · ${dateLabel}`,
+            `⚠️ অফিস সমস্যা ও সমাধান — চলমান: ${data.pending.length}টি · সমাধান: ${data.resolved.length}টি · ${dateLabel}`,
     },
     business_stats: {
         name: 'ব্যবসা পরিসংখ্যান', icon: '📊', timeSlot: '⏰ বিকাল ২টা',
