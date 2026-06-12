@@ -179,7 +179,7 @@ const HOUR_SCHEDULE = {
             countLabel: 'টি বিল রেকর্ড', collection: 'transport_bill_archive', countField: null,
         },
         {
-            tag: 'business-stats', icon: '📊', title: 'ব্যবসা পরিসংখ্যান',
+            tag: 'business-stats', icon: '📊', title: 'ব্যবসা পরিসংখ্যান ও পর্যালোচনা',
             body: 'ব্যবসায়িক পরিসংখ্যান রিপোর্ট দেখুন।',
             countLabel: 'টি রিপোর্ট', collection: 'business_analysis_archives',
             orderByField: 'meta->createdAt', countField: null,
