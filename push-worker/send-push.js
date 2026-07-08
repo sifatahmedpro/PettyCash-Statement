@@ -1338,6 +1338,35 @@ async function runPushWorker() {
         return { success: true, stats: globalStats, duration: Date.now() - startTime };
     }
 
+    // ── Exclude staff: module-reminder pushes (task/payment/etc., the same
+    // tags notify.js maps to page notifications) are admin-only. Staff still
+    // receive call pushes (send-call-push) and chat pushes (send-chat-push) —
+    // those are separate functions/tables and are untouched by this filter.
+    // Mirrors the staff_profiles check already used by notify.js / app-backend.js.
+    // FAIL-OPEN: if this lookup itself fails, we log and proceed with the
+    // unfiltered uid list rather than aborting the whole run — consistent
+    // with the fail-open pattern already used elsewhere in this codebase.
+    try {
+        const { data: staffRows, error: staffErr } = await getDB()
+            .from('staff_profiles')
+            .select('uid')
+            .in('uid', uids);
+        if (staffErr) throw staffErr;
+
+        const staffUidSet = new Set((staffRows || []).map(r => r.uid));
+        if (staffUidSet.size > 0) {
+            logger.info(`🚫 Excluding ${staffUidSet.size} staff uid(s) from module-reminder push run`);
+            uids = uids.filter(uid => !staffUidSet.has(uid));
+        }
+    } catch (err) {
+        logger.warn('staff_profiles exclusion lookup failed — proceeding without filter (fail-open)', { error: err.message });
+    }
+
+    if (uids.length === 0) {
+        logger.warn('⚠️ No non-staff users found with push subscriptions after staff exclusion');
+        return { success: true, stats: globalStats, duration: Date.now() - startTime };
+    }
+
     if (CONFIG.RESET_SEEN_TODAY && !CONFIG.DRY_RUN) {
         await resetSeenTodayForAllUsers(uids);
     }
