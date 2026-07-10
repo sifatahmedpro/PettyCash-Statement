@@ -835,6 +835,17 @@ async function sendWebPushWithRetry(subscription, payload, maxAttempts = CONFIG.
             logger.info('✅ Push sent', { device: deviceName, subId, attempt });
             return { success: true };
         } catch (err) {
+            // DIAGNOSTIC (temporary): the 410/404/401 checks below only ever
+            // fire if err.statusCode actually matches — but nothing was
+            // logging what statusCode really was, so persistent failures
+            // that don't hit those branches were indistinguishable from
+            // truly transient ones. This line changes no behavior, it only
+            // makes the real cause visible in the next run's log.
+            logger.warn('Push error detail (diagnostic)', {
+                device: deviceName, subId,
+                statusCode: err.statusCode ?? null,
+                body: typeof err.body === 'string' ? err.body.slice(0, 300) : (err.body ?? null),
+            });
             if (err.statusCode === 410 || err.statusCode === 404) {
                 logger.warn('Subscription expired (410/404)', { device: deviceName, subId });
                 return { success: false, expired: true, endpoint: subscription.endpoint };
@@ -978,10 +989,40 @@ async function getUserSubscriptions(uid) {
             .eq('uid', uid);
         if (error) throw error;
 
-        const all   = data || [];
+        const all = data || [];
+
+        // ── Per-device push toggle (Device Manager) ──────────────────
+        // devices.push_enabled defaults to true; only rows explicitly
+        // set to false are excluded. This only affects module-reminder
+        // pushes (this worker) — send-call-push and send-chat-push are
+        // separate functions/tables and are intentionally untouched by
+        // this filter, so calls/chat still reach every device.
+        let disabledUuids = new Set();
+        const deviceUuids = [...new Set(all.map(s => s.device_uuid).filter(Boolean))];
+        if (deviceUuids.length > 0) {
+            try {
+                const { data: devRows, error: devErr } = await getDB()
+                    .from('devices')
+                    .select('fingerprint, push_enabled')
+                    .in('fingerprint', deviceUuids);
+                if (devErr) throw devErr;
+                disabledUuids = new Set(
+                    (devRows || []).filter(d => d.push_enabled === false).map(d => d.fingerprint)
+                );
+            } catch (devErr) {
+                // FAIL-OPEN: if this lookup fails, proceed without the filter
+                // rather than skip all of a user's devices by mistake.
+                logger.warn('devices.push_enabled lookup failed — proceeding without filter', { uid, error: devErr.message });
+            }
+        }
+
         const valid = [];
 
         for (const s of all) {
+            if (s.device_uuid && disabledUuids.has(s.device_uuid)) {
+                logger.info('Device push disabled by user — skipping', { uid, device: s.device_name, deviceUuid: s.device_uuid });
+                continue;
+            }
             if (!s.endpoint) {
                 logger.warn('Subscription missing endpoint — skipping', { uid, id: s.id });
                 continue;
@@ -1317,53 +1358,26 @@ async function runPushWorker() {
 
     const globalStats = { usersProcessed: 0, usersFailed: 0, pushSent: 0, pushSkipped: 0, errors: 0, subscriptionsCleaned: 0 };
 
-    // ── Fetch all distinct UIDs that have push subscriptions ──
-    // Replaces: Firestore users collection .select().get()
-    // This is more efficient — only users with subscriptions matter.
-    let uids;
-    try {
-        const { data, error } = await getDB()
-            .from('push_subscriptions')
-            .select('uid');
-        if (error) throw error;
-        // Deduplicate
-        uids = [...new Set((data || []).map(r => r.uid))];
-    } catch (err) {
-        logger.error('Failed to fetch user UIDs from push_subscriptions', err);
-        return { success: false, error: err.message, duration: Date.now() - startTime };
-    }
+    // ── Target admin only (include-list, not exclude-list) ────
+    // Module-reminder pushes (task/payment/etc., the same tags notify.js
+    // maps to page notifications) are admin-only. Staff still receive
+    // call pushes (send-call-push) and chat pushes (send-chat-push) —
+    // those are separate functions/tables and are untouched by this.
+    //
+    // PREVIOUSLY this fetched every uid with a push subscription (admin +
+    // staff) and then subtracted staff via a staff_profiles lookup, with
+    // that lookup set to fail-open (proceed unfiltered) if it errored —
+    // meaning a transient DB error could silently send reminders to staff.
+    // There is no other consumer of `uids` below in this file (module
+    // reminders are the only thing this worker sends), so it's safe to
+    // target ADMIN_UID directly: there is no lookup left that can fail in
+    // an unsafe direction. Worst case if ADMIN_UID is ever wrong/unset is
+    // that admin gets zero reminders — loud and easy to notice — never a
+    // silent leak to staff.
+    let uids = [ADMIN_UID];
 
     if (uids.length === 0) {
-        logger.warn('⚠️ No users found with push subscriptions');
-        return { success: true, stats: globalStats, duration: Date.now() - startTime };
-    }
-
-    // ── Exclude staff: module-reminder pushes (task/payment/etc., the same
-    // tags notify.js maps to page notifications) are admin-only. Staff still
-    // receive call pushes (send-call-push) and chat pushes (send-chat-push) —
-    // those are separate functions/tables and are untouched by this filter.
-    // Mirrors the staff_profiles check already used by notify.js / app-backend.js.
-    // FAIL-OPEN: if this lookup itself fails, we log and proceed with the
-    // unfiltered uid list rather than aborting the whole run — consistent
-    // with the fail-open pattern already used elsewhere in this codebase.
-    try {
-        const { data: staffRows, error: staffErr } = await getDB()
-            .from('staff_profiles')
-            .select('uid')
-            .in('uid', uids);
-        if (staffErr) throw staffErr;
-
-        const staffUidSet = new Set((staffRows || []).map(r => r.uid));
-        if (staffUidSet.size > 0) {
-            logger.info(`🚫 Excluding ${staffUidSet.size} staff uid(s) from module-reminder push run`);
-            uids = uids.filter(uid => !staffUidSet.has(uid));
-        }
-    } catch (err) {
-        logger.warn('staff_profiles exclusion lookup failed — proceeding without filter (fail-open)', { error: err.message });
-    }
-
-    if (uids.length === 0) {
-        logger.warn('⚠️ No non-staff users found with push subscriptions after staff exclusion');
+        logger.warn('⚠️ ADMIN_UID not set — nothing to send');
         return { success: true, stats: globalStats, duration: Date.now() - startTime };
     }
 
