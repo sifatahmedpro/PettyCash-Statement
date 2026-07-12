@@ -854,6 +854,29 @@ async function sendWebPushWithRetry(subscription, payload, maxAttempts = CONFIG.
                 logger.error('VAPID auth failed (401)', err, { device: deviceName });
                 return { success: false, expired: false };
             }
+            // FIX (Issue 2, 2026-07-12): web-push reports a VAPID key MISMATCH
+            // (subscription was created with a different public key than the one
+            // this server is currently signing with) as a 403, not a 401/410/404 —
+            // so it previously fell through to the generic retry-then-fail branch
+            // below and was retried 3x every single run, forever, without ever
+            // being flagged for cleanup. This is not transient: retrying can never
+            // succeed, since the mismatch is permanent until the browser creates a
+            // brand-new subscription with the current key (see
+            // window.__refreshPushSubscription() in app-push.js). Detect this
+            // specific 403 body and treat it the same as an expired subscription —
+            // no further retries, and it's queued for deletion via
+            // cleanupExpiredSubscriptions() like 410/404 already are.
+            if (
+                err.statusCode === 403 &&
+                typeof err.body === 'string' &&
+                /vapid/i.test(err.body) &&
+                /credentials/i.test(err.body)
+            ) {
+                logger.warn('Subscription permanently invalid — VAPID key mismatch (403)', {
+                    device: deviceName, subId, body: err.body.slice(0, 300),
+                });
+                return { success: false, expired: true, endpoint: subscription.endpoint };
+            }
             if (attempt < maxAttempts) {
                 const delayMs = CONFIG.RETRY_DELAY_MS * Math.pow(2, attempt - 1);
                 logger.warn(`Push failed (attempt ${attempt}), retrying in ${delayMs}ms`, { device: deviceName, error: err.message });
