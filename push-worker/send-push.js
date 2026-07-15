@@ -73,6 +73,7 @@ const CONFIG = {
     // ── Supabase (replaces FIREBASE_PROJECT_ID / CLIENT_EMAIL / PRIVATE_KEY) ──
     SUPABASE_URL:              process.env.SUPABASE_URL              || '',
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+    SUPABASE_ANON_KEY:         process.env.SUPABASE_ANON_KEY         || '',
 
     VAPID_PUBLIC_KEY:  process.env.VAPID_PUBLIC_KEY  || '',
     VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY || '',
@@ -514,14 +515,29 @@ async function markSeenToday(uid, statusKey) {
 
 async function checkTaskReminderCooldown(uid) {
     try {
-        const { data, error } = await getDB()
-            .from('push_state')
-            .select('snoozed')
-            .eq('uid', uid)
-            .maybeSingle();
-        if (error) throw error;
+        // UNIFIED COOLDOWN (2026-07-15): the server's standalone 30-min tick
+        // and the client's in-app poll (app-reminder.js checkAndRemind) used
+        // to keep two independent clocks — push_state.snoozed on the server,
+        // reminder_state.last_alerted_at on the client — so a bell entry from
+        // an open tab and a bell entry from this cron could land far less
+        // than 30 min apart. Both timestamps are now read here and the more
+        // recent one gates the send, so whichever side (client tab or cron)
+        // fired most recently sets the shared cooldown.
+        const [{ data: pushStateRow, error: pushStateErr }, { data: reminderRow, error: reminderErr }] =
+            await Promise.all([
+                getDB().from('push_state').select('snoozed').eq('uid', uid).maybeSingle(),
+                getDB().from('reminder_state').select('last_alerted_at, date').eq('uid', uid).maybeSingle(),
+            ]);
+        if (pushStateErr) throw pushStateErr;
+        if (reminderErr) throw reminderErr;
 
-        const lastSent = data?.snoozed?.[TASK_REMINDER_COOLDOWN_KEY];
+        const serverLastSent = pushStateRow?.snoozed?.[TASK_REMINDER_COOLDOWN_KEY] || null;
+        const today           = getTodayDhaka();
+        const clientLastSent  = (reminderRow?.date === today && reminderRow?.last_alerted_at)
+            ? new Date(reminderRow.last_alerted_at).getTime()
+            : null;
+
+        const lastSent = Math.max(serverLastSent || 0, clientLastSent || 0) || null;
         if (lastSent && (Date.now() - lastSent) < TASK_REMINDER_COOLDOWN_MS) {
             return { skip: true, reason: `Task reminder cooldown active (last sent ${new Date(lastSent).toLocaleTimeString()})` };
         }
@@ -533,6 +549,8 @@ async function checkTaskReminderCooldown(uid) {
 }
 
 async function markTaskReminderCooldown(uid) {
+    const now   = Date.now();
+    const today = getTodayDhaka();
     try {
         const { data: existing } = await getDB()
             .from('push_state')
@@ -540,12 +558,11 @@ async function markTaskReminderCooldown(uid) {
             .eq('uid', uid)
             .maybeSingle();
 
-        const today   = getTodayDhaka();
         const sameDay = existing && existing.date === today;
         // Preserve today's keys[] (daily module gate) untouched — this write
         // only ever adds/updates the reserved cooldown key inside snoozed.
         const keys    = sameDay ? (existing.keys    || []) : (existing?.keys    || []);
-        const snoozed = { ...(existing?.snoozed || {}), [TASK_REMINDER_COOLDOWN_KEY]: Date.now() };
+        const snoozed = { ...(existing?.snoozed || {}), [TASK_REMINDER_COOLDOWN_KEY]: now };
 
         const { error } = await getDB()
             .from('push_state')
@@ -553,6 +570,40 @@ async function markTaskReminderCooldown(uid) {
         if (error) throw error;
     } catch (err) {
         logger.warn('markTaskReminderCooldown failed', { uid, error: err.message });
+    }
+
+    // UNIFIED COOLDOWN (2026-07-15): also stamp reminder_state.last_alerted_at
+    // so the client's checkAndRemind() (app-reminder.js) sees this cron send
+    // and won't fire its own in-app alert within the same 30-min window.
+    // seen_keys is preserved as-is — this cron doesn't know the client's
+    // status-key hash format and must never overwrite it.
+    try {
+        const { data: existingReminder } = await getDB()
+            .from('reminder_state')
+            .select('date, seen_keys')
+            .eq('uid', uid)
+            .maybeSingle();
+
+        const sameDay  = existingReminder && existingReminder.date === today;
+        const seenKeys = sameDay ? (existingReminder.seen_keys || []) : [];
+
+        // NOTE: no onConflict arg — intentionally mirrors app-backend.js's
+        // saveReminderState(), the client's own proven write path to this
+        // same table, which also omits onConflict and relies on Supabase's
+        // default conflict target (the table's primary key). Matching it
+        // exactly avoids guessing at a constraint name that could differ
+        // from the client's working assumption.
+        const { error } = await getDB()
+            .from('reminder_state')
+            .upsert({
+                uid,
+                date:            today,
+                seen_keys:       seenKeys,
+                last_alerted_at: new Date(now).toISOString(),
+            });
+        if (error) throw error;
+    } catch (err) {
+        logger.warn('markTaskReminderCooldown: reminder_state sync failed (non-critical)', { uid, error: err.message });
     }
 }
 
@@ -847,7 +898,8 @@ function buildTaskReminderPayload(statusKey, pendingTasks, uid, deviceName) {
         timestamp:          Date.now(),
         data: {
             statusKey, uid,
-            supabaseUrl:   CONFIG.SUPABASE_URL,   // replaces projectId + apiKey
+            supabaseUrl:      CONFIG.SUPABASE_URL,        // replaces projectId + apiKey
+            supabaseAnonKey:  CONFIG.SUPABASE_ANON_KEY,   // needed for sw.js push_state REST calls (no tab open)
             deviceName:    deviceName || '',
             type:          'task-reminder',
             taskCount:     pendingTasks.length,
@@ -1305,7 +1357,35 @@ async function sendTaskReminderToUser(uid, today, subscriptions, { cooldownMode 
     if ((result.pushed > 0 || result.errors > 0) && !CONFIG.DRY_RUN) {
         if (result.pushed > 0) {
             if (cooldownMode) {
-                await markTaskReminderCooldown(uid);   // independent 30-min cooldown only
+                await markTaskReminderCooldown(uid);   // shared 30-min cooldown (server + client)
+
+                // BELL ENTRY (2026-07-15): the standalone 30-min cron previously
+                // only sent the OS push and never wrote to the `notifications`
+                // table that the bell dropdown reads from — that table was only
+                // ever written by the client's own in-app poll. That meant every
+                // cron tick that fired while the app was closed/offline left no
+                // trace in the bell, producing visible gaps until the next time
+                // the app was opened. Insert the same shape of row the client
+                // writes (AppDB.sendReminderNotification / notify.js) so each
+                // successful cron push is also represented in the bell log.
+                try {
+                    const firstTitle = pendingTasks[0]?.title || 'কোনো শিরোনাম নেই';
+                    const body = pendingTasks.length === 1
+                        ? `"${firstTitle}" টাস্কটি এখনও বাকি আছে।`
+                        : `${pendingTasks.length}টি টাস্ক এখনও বাকি আছে। সর্বপ্রথম: "${firstTitle}"`;
+                    const { error: bellErr } = await getDB().from('notifications').insert({
+                        uid,
+                        title:     '⏰ পেন্ডিং টাস্ক রিমাইন্ডার',
+                        body,
+                        icon:      '⏰',
+                        is_read:   false,
+                        pushed:    true,   // OS push was already sent above by this same call
+                        timestamp: new Date().toISOString(),
+                    });
+                    if (bellErr) throw bellErr;
+                } catch (bellInsertErr) {
+                    logger.warn('sendTaskReminderToUser: bell notification insert failed (non-critical)', { uid, error: bellInsertErr.message });
+                }
             } else {
                 await markSeenToday(uid, statusKey);   // unchanged: daily bunch gate
             }
