@@ -95,7 +95,21 @@ const CONFIG = {
     MAX_RETRY_ATTEMPTS: 3,
     RETRY_DELAY_MS:     1000,
     BATCH_SIZE:         10,
+
+    // ── Standalone 30-min task-reminder tick (2026-07-15) ──────────
+    // Set true ONLY by the '*/30 * * * *' cron in push-notify.yml. Every
+    // other trigger (the 9 existing 2-hour crons, manual dispatch) leaves
+    // this false, so their behavior is completely unchanged — see the
+    // early-return branch in runPushWorker() below.
+    TASK_REMINDER_ONLY_MODE: process.env.TASK_REMINDER_ONLY_MODE === 'true',
 };
+
+// Reserved key inside push_state.snoozed — tracks last-sent time for the
+// standalone 30-min task reminder ONLY. Cannot collide with a real
+// statusKey: module keys are always 'module_<tag>_<date>' and task-manager's
+// daily-bunch key is always 'tasks_<hash>' — neither ever equals this string.
+const TASK_REMINDER_COOLDOWN_KEY = '_taskReminder30LastSent';
+const TASK_REMINDER_COOLDOWN_MS  = 30 * 60 * 1000;
 
 // ══════════════════════════════════════════════════════════════
 // SCHEDULE TABLE  (unchanged from v5.9)
@@ -486,6 +500,59 @@ async function markSeenToday(uid, statusKey) {
         }
     } catch (err) {
         logger.warn('markSeenToday failed', { uid, statusKey, error: err.message });
+    }
+}
+
+// ══════════════════════════════════════════════════════════════
+// STANDALONE 30-MIN TASK-REMINDER COOLDOWN  (2026-07-15)
+// Completely separate from checkSeenOrSnoozed/markSeenToday above, which
+// gate the once-per-day module bunch (including task-manager's 10am slot).
+// This reads/writes only the reserved TASK_REMINDER_COOLDOWN_KEY inside
+// push_state.snoozed, so it can never mark a real module statusKey as
+// "seen" and can never be blocked by one either.
+// ══════════════════════════════════════════════════════════════
+
+async function checkTaskReminderCooldown(uid) {
+    try {
+        const { data, error } = await getDB()
+            .from('push_state')
+            .select('snoozed')
+            .eq('uid', uid)
+            .maybeSingle();
+        if (error) throw error;
+
+        const lastSent = data?.snoozed?.[TASK_REMINDER_COOLDOWN_KEY];
+        if (lastSent && (Date.now() - lastSent) < TASK_REMINDER_COOLDOWN_MS) {
+            return { skip: true, reason: `Task reminder cooldown active (last sent ${new Date(lastSent).toLocaleTimeString()})` };
+        }
+        return { skip: false };
+    } catch (err) {
+        logger.warn('checkTaskReminderCooldown failed — proceeding', { uid, error: err.message });
+        return { skip: false };
+    }
+}
+
+async function markTaskReminderCooldown(uid) {
+    try {
+        const { data: existing } = await getDB()
+            .from('push_state')
+            .select('date, keys, snoozed')
+            .eq('uid', uid)
+            .maybeSingle();
+
+        const today   = getTodayDhaka();
+        const sameDay = existing && existing.date === today;
+        // Preserve today's keys[] (daily module gate) untouched — this write
+        // only ever adds/updates the reserved cooldown key inside snoozed.
+        const keys    = sameDay ? (existing.keys    || []) : (existing?.keys    || []);
+        const snoozed = { ...(existing?.snoozed || {}), [TASK_REMINDER_COOLDOWN_KEY]: Date.now() };
+
+        const { error } = await getDB()
+            .from('push_state')
+            .upsert({ uid, date: existing?.date || today, keys, snoozed }, { onConflict: 'uid' });
+        if (error) throw error;
+    } catch (err) {
+        logger.warn('markTaskReminderCooldown failed', { uid, error: err.message });
     }
 }
 
@@ -1159,7 +1226,7 @@ async function sendModuleNotificationToUser(uid, module, subscriptions, slotHour
 // Now:      SELECT * FROM tasks WHERE uid=$1 AND status != 'done'
 // ══════════════════════════════════════════════════════════════
 
-async function sendTaskReminderToUser(uid, today, subscriptions) {
+async function sendTaskReminderToUser(uid, today, subscriptions, { cooldownMode = false } = {}) {
     const result = { pushed: 0, skipped: 0, errors: 0, expiredEndpoints: [] };
 
     let pendingTasks = [];
@@ -1194,7 +1261,14 @@ async function sendTaskReminderToUser(uid, today, subscriptions) {
     }
 
     const statusKey = buildStatusKey('task-manager', pendingTasks);
-    const seenCheck = await checkSeenOrSnoozed(uid, statusKey);
+
+    // cooldownMode (standalone 30-min tick): use the independent cooldown
+    // gate instead of the daily "seen today" gate, so this can legitimately
+    // re-fire every 30 min for the same pending task set. Default mode
+    // (the existing 10am bunch call) is completely unchanged.
+    const seenCheck = cooldownMode
+        ? await checkTaskReminderCooldown(uid)
+        : await checkSeenOrSnoozed(uid, statusKey);
 
     if (seenCheck.skip) {
         logger.debug(`Task reminder skipped for ${uid}: ${seenCheck.reason}`);
@@ -1229,10 +1303,16 @@ async function sendTaskReminderToUser(uid, today, subscriptions) {
     }
 
     if ((result.pushed > 0 || result.errors > 0) && !CONFIG.DRY_RUN) {
-        if (result.pushed > 0) await markSeenToday(uid, statusKey);
-        if (result.pushed > 0) await markTaskNotificationsAsPushed(uid);
+        if (result.pushed > 0) {
+            if (cooldownMode) {
+                await markTaskReminderCooldown(uid);   // independent 30-min cooldown only
+            } else {
+                await markSeenToday(uid, statusKey);   // unchanged: daily bunch gate
+            }
+            await markTaskNotificationsAsPushed(uid);
+        }
         const taskModule = { tag: 'task-manager', icon: '📋', title: 'টাস্ক ম্যানেজার', isTaskReminder: true };
-        await writePushLog(uid, taskModule, result, pendingTasks.length, statusKey, 10, deviceResults);
+        await writePushLog(uid, taskModule, result, pendingTasks.length, statusKey, cooldownMode ? getDhakaHour() : 10, deviceResults);
     }
 
     return result;
@@ -1354,6 +1434,26 @@ async function runPushWorker() {
     if (!isActive && !CONFIG.FORCE_SEND && !CONFIG.IS_MANUAL_TRIGGER) {
         logger.warn('🔴 Resting hours — exiting silently', { dhakaHour });
         return { success: true, skipped: true, reason: 'Resting hours' };
+    }
+
+    // ── Standalone 30-min task-reminder tick (2026-07-15) ─────────────
+    // Only true when push-notify.yml's '*/30 * * * *' cron fired. Handled
+    // and returned here, BEFORE any HOUR_SCHEDULE/hasSlot logic below, so
+    // it can never interact with — or be blocked/gated by — the 2-hour
+    // module bunch (task-manager's own 10am slot in that bunch is
+    // completely untouched by this branch).
+    if (CONFIG.TASK_REMINDER_ONLY_MODE) {
+        logger.info('⏰ Standalone task-reminder tick (30-min cooldown mode)', { dhakaHour });
+
+        const subscriptions = await getUserSubscriptions(ADMIN_UID);
+        if (subscriptions.length === 0) {
+            logger.debug('No valid push subscriptions for task-reminder tick', { uid: ADMIN_UID });
+            return { success: true, stats: { pushed: 0, skipped: 1, errors: 0 }, duration: Date.now() - startTime };
+        }
+
+        const result = await sendTaskReminderToUser(ADMIN_UID, today, subscriptions, { cooldownMode: true });
+        logger.info('⏰ Standalone task-reminder tick finished', result);
+        return { success: true, stats: result, duration: Date.now() - startTime };
     }
 
     if (!hasSlot && !CONFIG.FORCE_SEND && !CONFIG.IS_MANUAL_TRIGGER) {
