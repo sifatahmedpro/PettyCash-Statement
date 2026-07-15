@@ -28,6 +28,14 @@ on:
     - cron: '55 13 * * *'   # Dhaka 20:00 → donation · help · help-requisition
     - cron: '55 15 * * *'   # Dhaka 22:00 → proposal-index · fpr-register · license-archive
 
+    ## Standalone task-manager reminder — fires every 30 minutes, independent
+    ## of the 2-hour module bunch above. send-push.js detects this trigger via
+    ## github.event.schedule and runs ONLY sendTaskReminderToUser() in cooldown
+    ## mode (see Step 6 below) — it never touches HOUR_SCHEDULE, so the
+    ## task-manager entry inside the Dhaka-10 bunch above is completely
+    ## unaffected and keeps firing normally as part of that bunch too.
+    - cron: '*/30 * * * *'  # Every 30 min, all day — same active/resting window as everything else
+
   ## Manual trigger from Actions tab for testing
   workflow_dispatch:
     inputs:
@@ -178,6 +186,11 @@ jobs:
           WORKFLOW_RUN_NUMBER:        ${{ github.run_number }}
           GITHUB_ACTOR:               ${{ github.actor }}
           IS_MANUAL_TRIGGER:          ${{ github.event_name == 'workflow_dispatch' }}
+          ## Standalone 30-min task-reminder tick — true ONLY when this specific
+          ## cron fired. Every other trigger (the 9 existing 2-hour crons, and
+          ## manual dispatch) leaves this false/unset, so their code path in
+          ## send-push.js is completely unchanged.
+          TASK_REMINDER_ONLY_MODE:    ${{ github.event.schedule == '*/30 * * * *' }}
         run: |
           echo "🚀 Starting push notification worker (v6.0)..."
           echo ""
@@ -189,6 +202,7 @@ jobs:
           echo "  Force send:     $FORCE_SEND"
           echo "  Dry run:        $DRY_RUN"
           echo "  Slot:           ${{ steps.dhaka_time.outputs.slot_name }}"
+          echo "  Task-only tick: $TASK_REMINDER_ONLY_MODE"
           echo ""
 
           node send-push.js
