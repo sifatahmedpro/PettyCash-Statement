@@ -1392,6 +1392,7 @@ async function sendTaskReminderToUser(uid, today, subscriptions, { cooldownMode 
                         icon:      '⏰',
                         is_read:   false,
                         pushed:    true,   // OS push was already sent above by this same call
+                        source:    'cron', // 2026-07-16: distinguishes this from client in-app writes
                         timestamp: new Date().toISOString(),
                     });
                     if (bellErr) throw bellErr;
