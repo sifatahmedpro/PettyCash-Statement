@@ -103,6 +103,18 @@ const CONFIG = {
     // this false, so their behavior is completely unchanged — see the
     // early-return branch in runPushWorker() below.
     TASK_REMINDER_ONLY_MODE: process.env.TASK_REMINDER_ONLY_MODE === 'true',
+
+    // ── Task-reminder business hours (2026-07-16) ───────────────────
+    // Deliberately separate from ACTIVE_HOUR_START/END above. That pair
+    // still governs the 2-hour module bunch (task-manager, fund-archive,
+    // vat-tax, etc.) and stays 6-24, unchanged. This pair governs ONLY the
+    // standalone 30-min task-reminder tick, and must mirror
+    // BUSINESS.REMINDER_HOUR_START / REMINDER_HOUR_END in app-constants.js
+    // (the client's in-app checkAndRemind() gate in app-reminder.js) so the
+    // phone push and the browser tab reminder start/stop at the same hour.
+    // If the business-hour window ever changes, update both places.
+    TASK_REMINDER_HOUR_START: 9,
+    TASK_REMINDER_HOUR_END:   18,
 };
 
 // Reserved key inside push_state.snoozed — tracks last-sent time for the
@@ -1523,6 +1535,19 @@ async function runPushWorker() {
     // module bunch (task-manager's own 10am slot in that bunch is
     // completely untouched by this branch).
     if (CONFIG.TASK_REMINDER_ONLY_MODE) {
+        // Business-hours gate (2026-07-16): the tick's own 6-24 ACTIVE_HOUR
+        // check above only stops it overnight — it does nothing between 6pm
+        // and midnight. This second, tighter check is what actually confines
+        // the 30-min repeat to 9am-6pm, matching the client's in-app gate.
+        const taskReminderActive =
+            dhakaHour >= CONFIG.TASK_REMINDER_HOUR_START &&
+            dhakaHour <  CONFIG.TASK_REMINDER_HOUR_END;
+
+        if (!taskReminderActive) {
+            logger.info('🔴 Task-reminder tick outside 9am-6pm window — skipping silently', { dhakaHour });
+            return { success: true, skipped: true, reason: 'Task-reminder outside business hours' };
+        }
+
         logger.info('⏰ Standalone task-reminder tick (30-min cooldown mode)', { dhakaHour });
 
         const subscriptions = await getUserSubscriptions(ADMIN_UID);
