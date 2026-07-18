@@ -554,31 +554,25 @@ async function markSeenToday(uid, statusKey) {
 
 async function checkTaskReminderCooldown(uid) {
     try {
-        // UNIFIED COOLDOWN (2026-07-15): the server's standalone 30-min tick
-        // and the client's in-app poll (app-reminder.js checkAndRemind) used
-        // to keep two independent clocks — push_state.snoozed on the server,
-        // reminder_state.last_alerted_at on the client — so a bell entry from
-        // an open tab and a bell entry from this cron could land far less
-        // than 30 min apart. Both timestamps are now read here and the more
-        // recent one gates the send, so whichever side (client tab or cron)
-        // fired most recently sets the shared cooldown.
-        const [{ data: pushStateRow, error: pushStateErr }, { data: reminderRow, error: reminderErr }] =
-            await Promise.all([
-                getDB().from('push_state').select('snoozed').eq('uid', uid).maybeSingle(),
-                getDB().from('reminder_state').select('last_alerted_at, date').eq('uid', uid).maybeSingle(),
-            ]);
+        // SEPARATED COOLDOWN (2026-07-18): previously this also read
+        // reminder_state.last_alerted_at (the client's in-app poll timestamp)
+        // and took whichever of the two clocks was more recent — meaning an
+        // in-app alert on ONE open tab (PC) could silently suppress the OS
+        // push for the same 30-min window, even on devices with no open tab
+        // (e.g. Redmi), which never got anything either way. Per explicit
+        // request, the OS-push cooldown is now independent: it only looks
+        // at push_state.snoozed, the server's own send record. The in-app
+        // poll (app-reminder.js checkAndRemind) keeps its own separate
+        // cooldown via reminder_state, unaffected by this. Tradeoff accepted:
+        // a device with an open tab can now receive both an in-app alert and
+        // an OS push for the same pending task within the same window.
+        const { data: pushStateRow, error: pushStateErr } =
+            await getDB().from('push_state').select('snoozed').eq('uid', uid).maybeSingle();
         if (pushStateErr) throw pushStateErr;
-        if (reminderErr) throw reminderErr;
 
-        const serverLastSent = pushStateRow?.snoozed?.[TASK_REMINDER_COOLDOWN_KEY] || null;
-        const today           = getTodayDhaka();
-        const clientLastSent  = (reminderRow?.date === today && reminderRow?.last_alerted_at)
-            ? new Date(reminderRow.last_alerted_at).getTime()
-            : null;
-
-        const lastSent = Math.max(serverLastSent || 0, clientLastSent || 0) || null;
+        const lastSent = pushStateRow?.snoozed?.[TASK_REMINDER_COOLDOWN_KEY] || null;
         if (lastSent && (Date.now() - lastSent) < TASK_REMINDER_COOLDOWN_MS) {
-            return { skip: true, reason: `Task reminder cooldown active (last sent ${new Date(lastSent).toLocaleTimeString()})` };
+            return { skip: true, reason: `Task reminder cooldown active (last sent ${new Date(lastSent).toISOString()} UTC)` };
         }
         return { skip: false };
     } catch (err) {
@@ -611,39 +605,12 @@ async function markTaskReminderCooldown(uid) {
         logger.warn('markTaskReminderCooldown failed', { uid, error: err.message });
     }
 
-    // UNIFIED COOLDOWN (2026-07-15): also stamp reminder_state.last_alerted_at
-    // so the client's checkAndRemind() (app-reminder.js) sees this cron send
-    // and won't fire its own in-app alert within the same 30-min window.
-    // seen_keys is preserved as-is — this cron doesn't know the client's
-    // status-key hash format and must never overwrite it.
-    try {
-        const { data: existingReminder } = await getDB()
-            .from('reminder_state')
-            .select('date, seen_keys')
-            .eq('uid', uid)
-            .maybeSingle();
-
-        const sameDay  = existingReminder && existingReminder.date === today;
-        const seenKeys = sameDay ? (existingReminder.seen_keys || []) : [];
-
-        // NOTE: no onConflict arg — intentionally mirrors app-backend.js's
-        // saveReminderState(), the client's own proven write path to this
-        // same table, which also omits onConflict and relies on Supabase's
-        // default conflict target (the table's primary key). Matching it
-        // exactly avoids guessing at a constraint name that could differ
-        // from the client's working assumption.
-        const { error } = await getDB()
-            .from('reminder_state')
-            .upsert({
-                uid,
-                date:            today,
-                seen_keys:       seenKeys,
-                last_alerted_at: new Date(now).toISOString(),
-            });
-        if (error) throw error;
-    } catch (err) {
-        logger.warn('markTaskReminderCooldown: reminder_state sync failed (non-critical)', { uid, error: err.message });
-    }
+    // SEPARATED COOLDOWN (2026-07-18): no longer stamps reminder_state
+    // (the client's in-app cooldown table) — see checkTaskReminderCooldown
+    // above for why. The OS-push cooldown lives entirely in push_state now;
+    // the in-app poll's own cooldown (reminder_state, written by
+    // app-reminder.js / app-backend.js's saveReminderState) is completely
+    // independent and untouched by this function.
 }
 
 // ══════════════════════════════════════════════════════════════
