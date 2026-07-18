@@ -1,0 +1,186 @@
+name: Task Reminder Push (30-min)
+
+# ─────────────────────────────────────────────────────────────────────────
+# Standalone 30-minute task-reminder tick, split out of push-notify.yml on
+# 2026-07-18 to fix two reliability problems observed in production:
+#
+#   1. It previously fired at exactly '*/30 * * * *' — i.e. :00 and :30 of
+#      every hour. GitHub's own docs warn that scheduled workflows are most
+#      likely to be delayed at the start of every hour (and, by the same
+#      logic, the half-hour) because that's when the platform-wide load from
+#      every repo's scheduled workflows peaks. This workflow instead fires
+#      at :07 and :37 — off the round-number boundary — to reduce that risk.
+#
+#   2. It previously shared a `concurrency: group: push-notifications` with
+#      the 9 two-hour module-bunch crons in push-notify.yml. With
+#      cancel-in-progress:false, GitHub only keeps the MOST RECENTLY QUEUED
+#      pending run per concurrency group — so if a module-bunch run was
+#      still in progress when a tick fired, that tick queued, and if another
+#      tick then fired 30 minutes later before the first queued run got a
+#      chance to execute, the first one was silently dropped entirely (no
+#      error, no log — it just never ran). This is what caused the multi-hour
+#      gaps between reminders despite the 30-min cron firing on schedule.
+#      Giving this tick its own concurrency group means it can never be
+#      blocked or dropped by the other 9 crons, and vice versa.
+#
+# This workflow calls the exact same send-push.js / sendTaskReminderToUser()
+# path as before, in TASK_REMINDER_ONLY_MODE — it does not touch
+# HOUR_SCHEDULE or any of the module-bunch logic in push-notify.yml, which
+# is completely unaffected by this split.
+# ─────────────────────────────────────────────────────────────────────────
+
+on:
+  schedule:
+    - cron: '7,37 * * * *'  # Every 30 min, offset off :00/:30 (see note above)
+
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run — show what would be sent without actually sending'
+        required: false
+        default: 'false'
+
+concurrency:
+  group: task-reminder-push
+  cancel-in-progress: false
+
+jobs:
+  send-task-reminder:
+    name: Send 30-min Task Reminder
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: push-worker/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          echo "📦 Installing dependencies..."
+          npm ci --no-audit
+        working-directory: push-worker
+        timeout-minutes: 5
+
+      - name: Validate configuration
+        env:
+          SUPABASE_URL:               ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY:  ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          VAPID_PUBLIC_KEY:           ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY:          ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_SUBJECT:              ${{ secrets.VAPID_SUBJECT }}
+        run: |
+          echo "🔍 Validating secrets..."
+
+          required_secrets=(
+            "SUPABASE_URL"
+            "SUPABASE_SERVICE_ROLE_KEY"
+            "VAPID_PUBLIC_KEY"
+            "VAPID_PRIVATE_KEY"
+            "VAPID_SUBJECT"
+          )
+
+          missing_secrets=()
+
+          for secret in "${required_secrets[@]}"; do
+            var_value="${!secret}"
+            if [ -z "$var_value" ]; then
+              missing_secrets+=("$secret")
+              echo "❌ Missing: $secret"
+            else
+              echo "✅ Found:   $secret (${#var_value} chars)"
+            fi
+          done
+
+          if [ ${#missing_secrets[@]} -gt 0 ]; then
+            echo ""
+            echo "⚠️  The following required secrets are not set:"
+            for s in "${missing_secrets[@]}"; do
+              echo "   - $s"
+            done
+            echo ""
+            echo "Add them at: repo → Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+
+          echo ""
+          echo "✅ All required secrets are present."
+
+      - name: Send 30-min task reminder
+        id: push_worker
+        env:
+          SUPABASE_URL:               ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY:  ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          VAPID_PUBLIC_KEY:           ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY:          ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_SUBJECT:              ${{ secrets.VAPID_SUBJECT }}
+          DRY_RUN:                    ${{ github.event.inputs.dry_run }}
+          RUN_ID:                     ${{ github.run_id }}
+          WORKFLOW_RUN_NUMBER:        ${{ github.run_number }}
+          GITHUB_ACTOR:               ${{ github.actor }}
+          IS_MANUAL_TRIGGER:          ${{ github.event_name == 'workflow_dispatch' }}
+          ## Always true in this workflow — this file's only job is the
+          ## standalone 30-min task-reminder tick. Unlike the old shared
+          ## workflow, there is no need to derive this from
+          ## github.event.schedule since every trigger here means the same
+          ## thing.
+          TASK_REMINDER_ONLY_MODE:    'true'
+        run: |
+          echo "🚀 Starting 30-min task reminder tick..."
+          echo ""
+          echo "Run information:"
+          echo "  Run ID:         $RUN_ID"
+          echo "  Run Number:     $WORKFLOW_RUN_NUMBER"
+          echo "  Triggered by:   $GITHUB_ACTOR"
+          echo "  Manual trigger: $IS_MANUAL_TRIGGER"
+          echo "  Dry run:        $DRY_RUN"
+          echo ""
+
+          node send-push.js
+          exit_code=$?
+
+          echo ""
+          echo "Worker exit code: $exit_code"
+          echo "push_worker_exit_code=$exit_code" >> $GITHUB_OUTPUT
+
+          exit $exit_code
+        working-directory: push-worker
+        timeout-minutes: 8
+        continue-on-error: true
+
+      - name: Generate job summary
+        if: always()
+        run: |
+          echo "# Task Reminder Push — Summary" >> $GITHUB_STEP_SUMMARY
+          echo ""                                >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |"               >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|"                        >> $GITHUB_STEP_SUMMARY
+          echo "| Run ID | ${{ github.run_id }} |"         >> $GITHUB_STEP_SUMMARY
+          echo "| Run number | ${{ github.run_number }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Trigger | ${{ github.event_name }} |"    >> $GITHUB_STEP_SUMMARY
+          echo "| Timestamp | $(date -u +'%Y-%m-%d %H:%M UTC') |" >> $GITHUB_STEP_SUMMARY
+          echo ""                                >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.push_worker.outcome }}" == "success" ]; then
+            echo "**Status: ✅ Success**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Status: ❌ Failed — check logs above**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Final status check
+        if: always()
+        run: |
+          if [ "${{ steps.push_worker.outcome }}" == "success" ]; then
+            echo "✅ Task reminder tick completed successfully"
+            exit 0
+          else
+            echo "❌ Task reminder tick failed — check logs above"
+            exit 1
+          fi
