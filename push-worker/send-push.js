@@ -431,6 +431,33 @@ function taskDateToDhaka(isoOrDate) {
 }
 
 // ══════════════════════════════════════════════════════════════
+// DEADLINE / STATUS LABEL HELPERS (2026-07-18)
+// Shared by buildTaskReminderPayload() (OS push, summarized) and the
+// bell-notification body in sendTaskReminderToUser() (full breakdown).
+// ══════════════════════════════════════════════════════════════
+
+/**
+ * Bangla deadline phrase for a task's Dhaka-local date vs today.
+ * "আজ শেষ" (due today), "N দিন বাকি" (N days left),
+ * "N দিন বিলম্বিত" (N days overdue). Tasks with no date return ''.
+ */
+function formatDeadlineBangla(taskDateDhaka, todayDhaka) {
+    if (!taskDateDhaka) return '';
+    const t = new Date(taskDateDhaka + 'T00:00:00Z');
+    const d = new Date(todayDhaka   + 'T00:00:00Z');
+    if (isNaN(t) || isNaN(d)) return '';
+    const diffDays = Math.round((t - d) / 86400000);
+    if (diffDays === 0) return 'আজ শেষ';
+    if (diffDays > 0)   return `${diffDays} দিন বাকি`;
+    return `${Math.abs(diffDays)} দিন বিলম্বিত`;
+}
+
+/** Status icon + label. 'progress' → চলমান, everything else → বাকি. */
+function formatStatusBangla(status) {
+    return status === 'progress' ? '⚡ চলমান' : '🔲 বাকি';
+}
+
+// ══════════════════════════════════════════════════════════════
 // STATUS KEY  (unchanged)
 // ══════════════════════════════════════════════════════════════
 
@@ -897,11 +924,21 @@ function buildRichBody(module, count, docs) {
 
 function buildTaskReminderPayload(statusKey, pendingTasks, uid, deviceName) {
     const firstTitle = pendingTasks[0]?.title || 'কোনো শিরোনাম নেই';
-    const remaining  = Math.max(0, pendingTasks.length - 1);
-    const remainText = remaining > 0 ? ` এবং আরও ${remaining} টি` : '';
+
+    // FIX (2026-07-18): summarized push body — counts by status, no full
+    // per-task list (OS notifications truncate on most phones). The full
+    // per-task breakdown with deadlines lives in the bell dropdown
+    // (see the `notifications` insert in sendTaskReminderToUser above).
+    const todoCount     = pendingTasks.filter(t => t.status !== 'progress').length;
+    const progressCount = pendingTasks.filter(t => t.status === 'progress').length;
+    const breakdownParts = [];
+    if (todoCount > 0)     breakdownParts.push(`${todoCount}টি বাকি`);
+    if (progressCount > 0) breakdownParts.push(`${progressCount}টি চলমান`);
+    const breakdownText = breakdownParts.length > 0 ? ` (${breakdownParts.join(', ')})` : '';
+
     return {
-        title:              `📋 ${pendingTasks.length} টি টাস্ক অপেক্ষমান`,
-        body:               `"${firstTitle.slice(0, 50)}"${remainText}`,
+        title:              `📋 ${pendingTasks.length} টি টাস্ক অপেক্ষমান${breakdownText}`,
+        body:               `প্রথম: "${firstTitle.slice(0, 50)}" — বিস্তারিত দেখতে ট্যাপ করুন`,
         icon:               'https://raw.githubusercontent.com/sifatahmedpro/PettyCash-Statement/main/logo.png',
         badge:              'https://raw.githubusercontent.com/sifatahmedpro/PettyCash-Statement/main/logo.png',
         tag:                `task-reminder-${statusKey}`,
@@ -1302,15 +1339,24 @@ async function sendTaskReminderToUser(uid, today, subscriptions, { cooldownMode 
             .neq('status', 'done');
         if (error) throw error;
 
+        // FIX (2026-07-18): previously only tasks due today or earlier
+        // (taskDate <= today) counted as "pending" here — a task due in
+        // the future stayed silent until its due date arrived. This
+        // mismatched app-backend.js's getPendingTasks(), which was already
+        // changed on 2026-07-15 (ALERT-FOR-ANY-DATE) to count ANY non-done
+        // task regardless of due date. That mismatch is why the in-app
+        // login reminder fired for a future-dated task while this OS-push
+        // path stayed silent for the same task. Now matches: ANY row
+        // returned by the query above (status != 'done') counts as
+        // pending, with no date comparison at all. `date` and `status`
+        // are still carried through so the payload/bell body can show
+        // per-task status and deadline countdown.
         for (const task of (data || [])) {
-            if (!task.date) {
-                pendingTasks.push({ title: task.title || 'Untitled Task' });
-                continue;
-            }
-            const taskDate = taskDateToDhaka(task.date);
-            if (taskDate && taskDate <= today) {
-                pendingTasks.push({ title: task.title || 'Untitled Task' });
-            }
+            pendingTasks.push({
+                title:  task.title || 'Untitled Task',
+                date:   task.date ? taskDateToDhaka(task.date) : null,
+                status: task.status || 'todo',
+            });
         }
     } catch (err) {
         logger.error('Failed to fetch tasks', err, { uid });
@@ -1381,10 +1427,20 @@ async function sendTaskReminderToUser(uid, today, subscriptions, { cooldownMode 
                 // writes (AppDB.sendReminderNotification / notify.js) so each
                 // successful cron push is also represented in the bell log.
                 try {
-                    const firstTitle = pendingTasks[0]?.title || 'কোনো শিরোনাম নেই';
-                    const body = pendingTasks.length === 1
-                        ? `"${firstTitle}" টাস্কটি এখনও বাকি আছে।`
-                        : `${pendingTasks.length}টি টাস্ক এখনও বাকি আছে। সর্বপ্রথম: "${firstTitle}"`;
+                    // FIX (2026-07-18): bell body now lists every pending task
+                    // with its status (বাকি/চলমান) and deadline countdown,
+                    // instead of just "first task + N more." This is the
+                    // detailed view — the OS push body itself stays a short
+                    // summary count (see buildTaskReminderPayload below).
+                    const todayDhaka = getTodayDhaka();
+                    const lines = pendingTasks.map(t => {
+                        const statusLabel = formatStatusBangla(t.status);
+                        const deadline    = formatDeadlineBangla(t.date, todayDhaka);
+                        return deadline
+                            ? `${statusLabel} "${t.title}" — ${deadline}`
+                            : `${statusLabel} "${t.title}"`;
+                    });
+                    const body = lines.join('\n');
                     const { error: bellErr } = await getDB().from('notifications').insert({
                         uid,
                         title:     '⏰ পেন্ডিং টাস্ক রিমাইন্ডার',
