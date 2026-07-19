@@ -18,7 +18,7 @@
  * NO localStorage. NO sessionStorage. State lives in Firestore.
  *
  * TO ADD TO ANY HTML PAGE:
- *   <!-- after firebase-config.js, app-backend.js, email-backend.js -->
+ *   <!-- after supabase-config.js, app-backend.js, email-backend.js -->
  *   <script type="module" src="../js/email/email-ui.js"></script>
  *
  *   Then place a mount point anywhere in your HTML:
@@ -50,7 +50,7 @@ function _waitFor(getter, label, timeoutMs = 10000) {
 const PAGE_DEFS = [
     { key: 'help',            label: 'সহায়তা',             icon: '📋', color: '#b45309', time: 'সকাল ১০টা'  },
     { key: 'office_issue',    label: 'সমস্যা ও সমাধান',   icon: '⚠️',  color: '#dc2626', time: 'দুপুর ১২টা' },
-    { key: 'business_stats',  label: 'ব্যবসা পরিসংখ্যান', icon: '📊', color: '#251577', time: 'বিকাল ২টা'  },
+    { key: 'business_stats',  label: 'ব্যবসা পরিসংখ্যান ও পর্যালোচনা', icon: '📊', color: '#251577', time: 'বিকাল ২টা'  },
     { key: 'premium_submit',  label: 'প্রিমিয়াম জমা',    icon: '🏦',  color: '#0369a1', time: 'বিকাল ৪টা'  },
     { key: 'advance_payment', label: 'অগ্রিম পরিশোধ',    icon: '💵', color: '#0f766e', time: 'সন্ধ্যা ৬টা' },
     { key: 'donation',        label: 'অনুদান',             icon: '🤝', color: '#7c3aed', time: 'রাত ৮টা'    },
@@ -131,20 +131,20 @@ function _injectStyles() {
     background: #fff;
     border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    font-size: 1.2rem;
+    font-size: 20px;
     flex-shrink: 0;
 }
 .en3-header h3 {
     margin: 0;
     color: #fff;
-    font-size: 1rem;
-    font-weight: 700;
+    font-size: 16px;
+    font-weight: 900;
     font-family: 'SolaimanLipi','Kalpurush','Noto Sans Bengali',sans-serif !important;
 }
 .en3-header p {
     margin: 0;
     color: #fff;
-    font-size: .78rem;
+    font-size: 16px;
     font-family: 'SolaimanLipi','Kalpurush','Noto Sans Bengali',sans-serif !important;
 }
 .en3-status-badge {
@@ -153,8 +153,8 @@ function _injectStyles() {
     gap: 5px;
     padding: 3px 11px;
     border-radius: 20px;
-    font-size: .72rem;
-    font-weight: 700;
+    font-size: .732px;
+    font-weight: 900;
     font-family: 'SolaimanLipi','Kalpurush','Noto Sans Bengali',sans-serif !important;
 }
 .en3-status-badge.active {
@@ -179,7 +179,7 @@ function _injectStyles() {
     gap: 4px;
     padding: 3px 10px;
     border-radius: 20px;
-    font-size: .73rem;
+    font-size: 16px;
     background: #ffff;
     color: #251577; 
     border: 1px solid #251577; 
@@ -212,8 +212,8 @@ function _injectStyles() {
     border-radius: 2px;
 }
 .en3-section-head span {
-    font-size: .78rem;
-    font-weight: 700;
+    font-size: 16px;
+    font-weight: 900;
     color: #251577;
     text-transform: uppercase;
     letter-spacing: .05em;
@@ -239,16 +239,16 @@ function _injectStyles() {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: .86rem;
+    font-size: 16px;
     color: #251577;
-    font-weight: 600;
+    font-weight: 900;
     font-family: 'SolaimanLipi','Kalpurush',sans-serif !important;
 }
 .en3-toggle-icon {
     width: 28px; height: 28px;
     border-radius: 7px;
     display: flex; align-items: center; justify-content: center;
-    font-size: .9rem;
+    font-size: 16px;
     background: rgba(37,21,119,.08);
 }
 
@@ -289,8 +289,8 @@ function _injectStyles() {
 }
 .en3-input-wrap label {
     display: block;
-    font-size: .78rem;
-    font-weight: 700;
+    font-size: 16px;
+    font-weight: 900;
     color: #251577;
     margin-bottom: 6px;
     font-family: 'SolaimanLipi','Kalpurush',sans-serif !important;
@@ -300,12 +300,12 @@ function _injectStyles() {
     padding: 10px 14px 10px 38px;
     border: 1.5px solid #dde0f8;
     border-radius: 9px;
-    font-size: .88rem;
+    font-size: 16px;
     background: #f8f8ff;
     color: #251577;
     box-sizing: border-box;
     font-family: 'SolaimanLipi','Kalpurush',sans-serif !important;
-    font-weight: 700 !important;
+    font-weight: 900 !important;
     transition: border-color .2s, box-shadow .2s;
     outline: none;
 }
@@ -318,7 +318,7 @@ function _injectStyles() {
     position: absolute;
     left: 11px;
     bottom: 11px;
-    font-size: .9rem;
+    font-size: 16px;
     pointer-events: none;
 }
 
@@ -335,8 +335,8 @@ function _injectStyles() {
     gap: 6px;
     padding: 10px 22px;
     border-radius: 9px;
-    font-size: .88rem;
-    font-weight: 700;
+    font-size: 16px;
+    font-weight: 900;
     cursor: pointer;
     border: none;
     transition: opacity .15s, transform .1s, box-shadow .15s;
@@ -369,8 +369,8 @@ function _injectStyles() {
     margin-top: 12px;
     padding: 10px 14px;
     border-radius: 9px;
-    font-size: .83rem;
-    font-weight: 600;
+    font-size: 16px;
+    font-weight: 900;
     font-family: 'SolaimanLipi','Kalpurush',sans-serif !important;
     align-items: center;
     gap: 8px;
@@ -383,7 +383,7 @@ function _injectStyles() {
 .en3-loading {
     padding: 18px;
     color: #9ca3af;
-    font-size: .85rem;
+    font-size: 16px;
     text-align: center;
     font-family: 'SolaimanLipi','Kalpurush',sans-serif !important;
 }
@@ -468,10 +468,10 @@ function _render(container, { title, sub, isSubscribed, email, prefs }) {
             <span>ইমেইল সময়সূচি (১০PM–১০AM নিরব)</span>
         </div>
 
-        <table style="width:100%;border-collapse:collapse;margin-bottom:4px;font-size:.8rem;font-family:'SolaimanLipi','Kalpurush',sans-serif">
+        <table style="width:100%;border-collapse:collapse;margin-bottom:4px;font-size:16px;font-family:'SolaimanLipi','Kalpurush',sans-serif">
             ${PAGE_DEFS.map(p => `
             <tr style="border-bottom:1px solid #ebebfc">
-              <td style="padding:5px 8px;color:#251577;font-weight:700">${p.icon} ${p.label}</td>
+              <td style="padding:5px 8px;color:#251577;font-weight:900">${p.icon} ${p.label}</td>
               <td style="padding:5px 8px;color:#6b7280;text-align:right">⏰ ${p.time}</td>
             </tr>`).join('')}
         </table>
@@ -610,6 +610,23 @@ function _wireEvents(container, uid, currentEmail) {
 async function _mount(el, uid) {
     const mountPoint = typeof el === 'string' ? document.getElementById(el) : el;
     if (!mountPoint) return;
+
+    // ── Respect the "Hide email widget" setting from settings_module.js ──────
+    // The setting is stored in localStorage under '__email_widget_hidden_by_settings'.
+    // Check it BEFORE touching innerHTML so the widget never flashes visible.
+    const isHiddenBySetting = (() => {
+        try { return localStorage.getItem('__email_widget_hidden_by_settings') === '1'; }
+        catch (_) { return false; }
+    })();
+    if (isHiddenBySetting) {
+        mountPoint.innerHTML = '';
+        mountPoint.style.display = 'none';
+        return;
+    }
+
+    // Ensure the mount point is visible (it may have been hidden by a prior call
+    // or by the MutationObserver in settings_module.js before the setting changed)
+    mountPoint.style.display = '';
 
     const title = mountPoint.dataset.title    || 'ইমেইল নোটিফিকেশন';
     const sub   = mountPoint.dataset.subtitle || '';
