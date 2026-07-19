@@ -31,7 +31,14 @@ name: Task Reminder Push (30-min)
 
 on:
   schedule:
-    - cron: '7,37 * * * *'  # Every 30 min, offset off :00/:30 (see note above)
+    # Every 30 min, offset off :00/:30 (see note above), restricted to
+    # UTC hours 3-11 == 9:07am-5:37pm Dhaka (UTC+6, no DST). This matches
+    # send-push.js's own TASK_REMINDER_HOUR_START(9)/END(18) business-hours
+    # gate, which remains in place unchanged as a redundant safety net.
+    # FIX (2026-07-19): previously fired all 24 hours and relied solely on
+    # that script-side gate to self-reject ~30 of ~48 daily runs outside
+    # 9am-6pm — wasteful and confusing in the Actions run history.
+    - cron: '7,37 3-11 * * *'
 
   workflow_dispatch:
     inputs:
