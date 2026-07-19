@@ -1,63 +1,66 @@
 /**
  * ============================================================
- * email-backend.js  —  v2.0 (PER-PAGE PREFERENCES)
- * Firebase Backend Layer — Email Notification System
+ * email-backend.js  —  v3.0 (SUPABASE MIGRATION)
+ * Supabase Backend Layer — Email Notification System
  *
- * WHAT CHANGED vs v1:
- *   The prefs object now supports a nested `pages` map so users
- *   can opt in/out of emails from individual pages:
+ * MIGRATION (Firebase → Supabase):
+ *   Firebase SDK imports   → removed entirely
+ *   getFirestore / doc / getDoc / setDoc / deleteDoc / serverTimestamp
+ *                          → window.__supabaseClient (set by app-backend.js)
+ *   Firestore path:          artifacts/default-app-id/users/{uid}/data/emailSubscription
+ *                          → Supabase table: email_subscriptions  (uid PK)
  *
- *   prefs: {
- *     morning: true,        // 8 AM digest slot
- *     evening: true,        // 8 PM digest slot
- *     tasks:   true,        // (legacy — still read by send-email)
+ *   Firestore dot-notation merge for setPagePref:
+ *     setDoc(ref, { 'prefs.pages.advance_payment': true }, { merge: true })
+ *   → Supabase:
+ *     fetch existing row → mutate pages object locally → upsert full prefs column
+ *     (Supabase does not support dot-notation partial JSONB updates from the client)
+ *
+ * TABLE SCHEMA  (email_subscriptions):
+ *   uid          TEXT PRIMARY KEY
+ *   email        TEXT NOT NULL
+ *   prefs        JSONB NOT NULL DEFAULT '{}'
+ *   active       BOOLEAN NOT NULL DEFAULT true
+ *   updated_at   TIMESTAMPTZ DEFAULT now()
+ *
+ *   prefs JSONB shape (unchanged from v2):
+ *   {
+ *     morning: boolean,
+ *     evening: boolean,
+ *     tasks:   boolean,
  *     pages: {
- *       advance_payment:  true,
- *       business_stats:   true,
- *       donation:         true,
- *       help:             true,
- *       office_issue:     true,
- *       premium_submit:   true,
+ *       advance_payment:  boolean,
+ *       business_stats:   boolean,
+ *       donation:         boolean,
+ *       help:             boolean,
+ *       office_issue:     boolean,
+ *       premium_submit:   boolean,
  *     }
  *   }
  *
- *   All page keys default to true (send) if not present —
- *   so existing subscriptions continue working without any
- *   migration.
- *
- * CONTRACT — window.EmailDB exposes:
+ * CONTRACT — window.EmailDB exposes (unchanged API surface):
  *   .saveEmailSubscription(uid, email, prefs)  → Promise
  *   .removeEmailSubscription(uid)              → Promise
  *   .getEmailSubscription(uid)                 → Promise<sub|null>
  *   .isSubscribed(uid)                         → Promise<boolean>
- *   .setPagePref(uid, pageKey, enabled)        → Promise   ← NEW v2
- *
- * FIRESTORE PATH (unchanged):
- *   artifacts/default-app-id/users/{uid}/data/emailSubscription
+ *   .setPagePref(uid, pageKey, enabled)        → Promise
  *
  * TO ADD TO ANY HTML PAGE:
- *   <script src="../js/common/firebase-config.js"></script>
+ *   <script src="../js/common/supabase-config.js"></script>
+ *   <script type="module" src="../js/common/app-backend.js"></script>
  *   <script type="module" src="../js/email/email-backend.js"></script>
  * ============================================================
  */
 
-import { initializeApp, getApps }
-    from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
-import {
-    getFirestore,
-    doc, getDoc, setDoc, deleteDoc, serverTimestamp
-} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
-
-// ── Firebase init (reuse existing app if already initialised) ──
-const _app = getApps().length
-    ? getApps()[0]
-    : initializeApp(window.__APP_CONFIG__ || window.FIREBASE_CONFIG);
-
-const _db = getFirestore(_app);
-
-// ── Path helper ───────────────────────────────────────────────
-const _emailSubRef = (uid) =>
-    doc(_db, 'artifacts', 'default-app-id', 'users', uid, 'data', 'emailSubscription');
+// ── Supabase client — set by app-backend.js ───────────────────
+// We do NOT import createClient here; app-backend.js already created
+// the shared client and exposed it as window.__supabaseClient.
+// Using the shared instance avoids a second connection.
+function _supa() {
+    const c = window.__supabaseClient;
+    if (!c) throw new Error('[EmailDB] window.__supabaseClient not ready — ensure app-backend.js loads first');
+    return c;
+}
 
 // ── All valid page keys (must match send-email.js getPageDefinitions) ──
 const PAGE_KEYS = [
@@ -77,19 +80,12 @@ window.EmailDB = {
     /**
      * Save (or update) the user's email subscription.
      *
-     * Prefs shape (v2):
+     * Prefs shape (unchanged from v2):
      *   {
-     *     morning: boolean,   // 8 AM digest
-     *     evening: boolean,   // 8 PM digest
-     *     tasks:   boolean,   // (legacy key — keep for compatibility)
-     *     pages: {
-     *       advance_payment:  boolean,
-     *       business_stats:   boolean,
-     *       donation:         boolean,
-     *       help:             boolean,
-     *       office_issue:     boolean,
-     *       premium_submit:   boolean,
-     *     }
+     *     morning: boolean,
+     *     evening: boolean,
+     *     tasks:   boolean,
+     *     pages: { advance_payment, business_stats, donation, help, office_issue, premium_submit }
      *   }
      *
      * If prefs.pages is omitted, all pages default to true.
@@ -103,27 +99,22 @@ window.EmailDB = {
         if (!uid)   throw new Error('EmailDB.saveEmailSubscription: uid required');
         if (!email) throw new Error('EmailDB.saveEmailSubscription: email required');
 
-        // Build default pages map (all enabled)
         const defaultPages = Object.fromEntries(PAGE_KEYS.map(k => [k, true]));
-
-        const defaults = {
-            morning: true,
-            evening: true,
-            tasks:   true,
-            pages:   defaultPages
-        };
-
-        // Deep-merge pages so callers can supply partial overrides
+        const defaults = { morning: true, evening: true, tasks: true, pages: defaultPages };
         const mergedPages = { ...defaultPages, ...(prefs.pages || {}) };
         const merged = { ...defaults, ...prefs, pages: mergedPages };
 
-        return setDoc(_emailSubRef(uid), {
-            uid,
-            email:     email.trim().toLowerCase(),
-            prefs:     merged,
-            active:    true,
-            updatedAt: serverTimestamp()
-        }, { merge: true });
+        const { error } = await _supa()
+            .from('email_subscriptions')
+            .upsert({
+                uid,
+                email:      email.trim().toLowerCase(),
+                prefs:      merged,
+                active:     true,
+                updated_at: new Date().toISOString(),
+            }, { onConflict: 'uid' });
+
+        if (error) throw error;
     },
 
     /**
@@ -134,11 +125,17 @@ window.EmailDB = {
      */
     async removeEmailSubscription(uid) {
         if (!uid) throw new Error('EmailDB.removeEmailSubscription: uid required');
-        return setDoc(_emailSubRef(uid), { active: false, updatedAt: serverTimestamp() }, { merge: true });
+
+        const { error } = await _supa()
+            .from('email_subscriptions')
+            .update({ active: false, updated_at: new Date().toISOString() })
+            .eq('uid', uid);
+
+        if (error) throw error;
     },
 
     /**
-     * Load the subscription document.
+     * Load the subscription row.
      * Returns null if the user has never subscribed.
      *
      * @param {string} uid
@@ -147,9 +144,23 @@ window.EmailDB = {
     async getEmailSubscription(uid) {
         if (!uid) return null;
         try {
-            const snap = await getDoc(_emailSubRef(uid));
-            if (!snap.exists()) return null;
-            return snap.data();
+            const { data, error } = await _supa()
+                .from('email_subscriptions')
+                .select('uid, email, prefs, active, updated_at')
+                .eq('uid', uid)
+                .maybeSingle();
+
+            if (error) throw error;
+            if (!data) return null;
+
+            // Map snake_case column back to the camelCase shape the UI expects
+            return {
+                uid:       data.uid,
+                email:     data.email,
+                prefs:     data.prefs || {},
+                active:    data.active,
+                updatedAt: data.updated_at,
+            };
         } catch (err) {
             console.error('EmailDB.getEmailSubscription error:', err);
             return null;
@@ -171,8 +182,8 @@ window.EmailDB = {
      * Toggle a single page's email on or off without touching
      * any other preferences.
      *
-     * Called from the email widget when a user flips a per-page
-     * toggle (if you add per-page toggles to email-ui.js).
+     * Supabase does not support dot-notation partial JSONB updates
+     * from the client SDK, so we fetch → mutate locally → upsert.
      *
      * @param {string}  uid
      * @param {string}  pageKey   — one of PAGE_KEYS above
@@ -185,11 +196,25 @@ window.EmailDB = {
             throw new Error(`EmailDB.setPagePref: unknown pageKey "${pageKey}"`);
         }
         try {
-            // Firestore dot-notation merge updates only the nested field
-            return setDoc(_emailSubRef(uid), {
-                [`prefs.pages.${pageKey}`]: !!enabled,
-                updatedAt: serverTimestamp()
-            }, { merge: true });
+            // Fetch current prefs so we can do a safe merge
+            const existing = await this.getEmailSubscription(uid);
+            const currentPrefs = existing?.prefs || {};
+            const currentPages = currentPrefs.pages || {};
+
+            const updatedPrefs = {
+                ...currentPrefs,
+                pages: { ...currentPages, [pageKey]: !!enabled }
+            };
+
+            const { error } = await _supa()
+                .from('email_subscriptions')
+                .update({
+                    prefs:      updatedPrefs,
+                    updated_at: new Date().toISOString(),
+                })
+                .eq('uid', uid);
+
+            if (error) throw error;
         } catch (err) {
             console.error('EmailDB.setPagePref error:', err);
             throw err;
