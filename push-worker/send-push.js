@@ -1118,6 +1118,13 @@ async function writePushLog(uid, module, result, count, statusKey, slotHour, dev
             run_id:       CONFIG.RUN_ID,
             record_count: count ?? null,
             devices,
+            // Explicit category column (2026-07-19) — previously the only way to
+            // tell a task-reminder row from a page-specific module-bunch row was
+            // to string-match module.isTaskReminder's effect on `detail`
+            // ("টাস্ক রিমাইন্ডার —" prefix), which was never persisted as a real
+            // column. That heuristic is now only used for one-time backfill of
+            // pre-existing rows; every new row gets an explicit category.
+            category:     module.isTaskReminder ? 'task-reminder' : 'page-specific',
         };
 
         // 1. Per-user log (uid = the actual user who received the push)
@@ -1493,6 +1500,7 @@ async function processUserAtHour(uid, dhakaHour, today) {
                     run_id:       CONFIG.RUN_ID,
                     record_count: null,
                     devices:      [],
+                    category:     module.isTaskReminder ? 'task-reminder' : 'page-specific',
                 };
                 await getDB().from('push_logs').insert(skippedEntry);
                 // Global run log — must use ADMIN_UID (mirrors writePushLog fix)
