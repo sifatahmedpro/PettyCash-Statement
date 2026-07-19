@@ -617,8 +617,13 @@ async function markTaskReminderCooldown(uid) {
 // MARK TASK NOTIFICATIONS AS PUSHED
 // Replaces: Firestore notifications sub-collection update
 // Now:      UPDATE notifications SET pushed=true WHERE uid=$1
-//           AND pushed=false AND tag='task-manager'
+//           AND pushed=false AND icon='⏰'
 //           AND timestamp >= (now - 2min)
+// FIX (2026-07-19): was querying a non-existent 'tag' column with value
+// 'task-manager'. The notifications table has no 'tag' column — per the
+// icon-overloading scheme documented in app-notifications.js, task-reminder
+// rows (client poll and this cron) store the emoji '⏰' in `icon`, while
+// 'task-manager' is only used as an icon value by notify.js module alerts.
 // ══════════════════════════════════════════════════════════════
 
 async function markTaskNotificationsAsPushed(uid) {
@@ -630,7 +635,7 @@ async function markTaskNotificationsAsPushed(uid) {
             .select('id, timestamp')
             .eq('uid', uid)
             .eq('pushed', false)
-            .eq('tag', 'task-manager')
+            .eq('icon', '⏰')
             .gte('timestamp', twoMinutesAgo);
         if (error) throw error;
 
