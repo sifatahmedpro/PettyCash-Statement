@@ -352,7 +352,10 @@ function emailShell({ headerAccent = '#251577', headerAccent2 = '#3730a3', icon,
     return `<!DOCTYPE html>
 <html lang="bn" dir="ltr">
 <head>
-<meta charset="UTF-8">
+    <meta charset="UTF-8">
+    <script>
+        (function(){try{var m=document.cookie.match(/(?:^|;\s*)oms_dark_mode=([^;]*)/);if(m&&decodeURIComponent(m[1])==='true'){document.documentElement.classList.add('dark-mode');}}catch(e){}})();
+    </script>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 ${FONT_IMPORT}
 <title>${title}</title>
