@@ -894,6 +894,18 @@ function buildRichBody(module, count, docs) {
         : `${count} ${countLabel} আছে। পর্যালোচনা করুন।`;
 }
 
+// Convert a 24-hour integer hour to a 12-hour "H:00 AM/PM" string for
+// human-readable log details (e.g. 16 -> "4:00 PM"). Returns the raw value
+// unconverted if slotHour is null/undefined/non-numeric, since some callers
+// (e.g. bootstrap/manual runs) may not always have a resolved hour.
+function _formatHour12(slotHour) {
+    if (slotHour === null || slotHour === undefined || isNaN(slotHour)) return String(slotHour);
+    const h    = Number(slotHour);
+    const h12  = h % 12 || 12;
+    const ampm = h < 12 ? 'AM' : 'PM';
+    return `${h12}:00 ${ampm}`;
+}
+
 function buildTaskReminderPayload(statusKey, pendingTasks, uid, deviceName) {
     const firstTitle = pendingTasks[0]?.title || 'কোনো শিরোনাম নেই';
 
@@ -1092,13 +1104,17 @@ async function writePushLog(uid, module, result, count, statusKey, slotHour, dev
         const icon  = module.icon  || '🔔';
         const label = module.isTaskReminder ? 'টাস্ক ম্যানেজার' : (module.title || tag);
 
+        // Render slotHour as 12-hour AM/PM (e.g. 16 → "4:00 PM") instead of
+        // 24-hour, matching the frontend's display convention. (2026-07-19)
+        const slotHourLabel = _formatHour12(slotHour);
+
         let detail = '';
         if (module.isTaskReminder) {
-            detail = `টাস্ক রিমাইন্ডার — ঘণ্টা ${slotHour}:০০`;
+            detail = `টাস্ক রিমাইন্ডার — ঘণ্টা ${slotHourLabel}`;
         } else if (count !== null && count !== undefined && module.countLabel) {
-            detail = `${count} ${module.countLabel} — ঘণ্টা ${slotHour}:০০ ঢাকা`;
+            detail = `${count} ${module.countLabel} — ঘণ্টা ${slotHourLabel} ঢাকা`;
         } else {
-            detail = `নির্ধারিত রিমাইন্ডার — ঘণ্টা ${slotHour}:০০ ঢাকা`;
+            detail = `নির্ধারিত রিমাইন্ডার — ঘণ্টা ${slotHourLabel} ঢাকা`;
         }
 
         const devices  = Array.isArray(deviceResults)
