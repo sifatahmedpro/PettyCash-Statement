@@ -108,13 +108,27 @@ const CONFIG = {
     // Deliberately separate from ACTIVE_HOUR_START/END above. That pair
     // still governs the 2-hour module bunch (task-manager, fund-archive,
     // vat-tax, etc.) and stays 6-24, unchanged. This pair governs ONLY the
-    // standalone 30-min task-reminder tick, and must mirror
-    // BUSINESS.REMINDER_HOUR_START / REMINDER_HOUR_END in app-constants.js
-    // (the client's in-app checkAndRemind() gate in app-reminder.js) so the
-    // phone push and the browser tab reminder start/stop at the same hour.
-    // If the business-hour window ever changes, update both places.
+    // standalone 30-min task-reminder tick.
+    //
+    // START (9) still mirrors BUSINESS.REMINDER_HOUR_START in
+    // app-constants.js (the client's in-app checkAndRemind() gate in
+    // app-reminder.js), so the phone push and the browser tab reminder both
+    // start at the same hour.
+    //
+    // END (2026-07-22 — was 18, matching app-constants.js exactly): widened
+    // to 19 as a 1-hour grace buffer, intentionally diverging from
+    // app-constants.js's REMINDER_HOUR_END, which stays 18. Reason: GitHub
+    // Actions scheduled cron is best-effort, not guaranteed on-time — an
+    // observed run scheduled for a slot within UTC hours 3-11 actually
+    // executed at 12:58 UTC (18:58 Dhaka) and was silently dropped by the
+    // old END=18 gate, even though the reminder was legitimately due. The
+    // browser-side in-app reminder (app-reminder.js) is unaffected by this
+    // change and correctly keeps stopping at 18:00, since that gate only
+    // matters while a tab is open; this gate is what matters when the
+    // browser is closed, which is exactly when the grace buffer is needed.
+    // If the business-hour START ever changes, update both places as before.
     TASK_REMINDER_HOUR_START: 9,
-    TASK_REMINDER_HOUR_END:   18,
+    TASK_REMINDER_HOUR_END:   19,
 };
 
 // Reserved key inside push_state.snoozed — tracks last-sent time for the
