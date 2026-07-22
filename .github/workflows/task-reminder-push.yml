@@ -31,14 +31,25 @@ name: Task Reminder Push (30-min)
 
 on:
   schedule:
-    # Every 30 min, offset off :00/:30 (see note above), restricted to
-    # UTC hours 3-11 == 9:07am-5:37pm Dhaka (UTC+6, no DST). This matches
-    # send-push.js's own TASK_REMINDER_HOUR_START(9)/END(18) business-hours
-    # gate, which remains in place unchanged as a redundant safety net.
+    # Every ~15 min, offset off :00/:30 (see note above), restricted to
+    # UTC hours 3-12 == 9:07am-6:52pm Dhaka (UTC+6, no DST). This matches
+    # send-push.js's own TASK_REMINDER_HOUR_START(9)/END(19) business-hours
+    # gate (grace-buffered to 19 — see that file), which remains in place as
+    # a redundant safety net.
     # FIX (2026-07-19): previously fired all 24 hours and relied solely on
     # that script-side gate to self-reject ~30 of ~48 daily runs outside
     # 9am-6pm — wasteful and confusing in the Actions run history.
-    - cron: '7,37 3-11 * * *'
+    # FIX (2026-07-22): added :22/:52 backup ticks (30min -> ~15min cadence)
+    # and extended the hour range by one, so that a GitHub Actions scheduling
+    # delay (platform is best-effort, not guaranteed on-time — see push_worker
+    # incident where a 3:37/11:xx-UTC-slot run actually executed at 12:58
+    # UTC and was silently dropped by the old 18:00 Dhaka gate) has a much
+    # smaller chance of pushing a run past business hours entirely, and if
+    # one tick is delayed/dropped, the next tick ~15 min later still catches
+    # the same due reminder before the 30-min cooldown window would matter.
+    # This does NOT eliminate the theoretical gap (an extreme delay beyond
+    # 19:00 Dhaka is still possible), just shrinks it to a small, unlikely one.
+    - cron: '7,22,37,52 3-12 * * *'
 
   workflow_dispatch:
     inputs:
