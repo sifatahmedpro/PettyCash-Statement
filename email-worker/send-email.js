@@ -198,21 +198,22 @@ async function fetchBusinessStats(uid) {
 async function fetchDonations(uid) {
     const { data, error } = await supabase
         .from('donations')
-        .select('code, name, branch, type, amount, date, is_archived')
+        .select('amount, is_archived, meta, created_at')
         .eq('uid', uid)
-        .order('timestamp', { ascending: false })
+        .order('created_at', { ascending: false })
         .limit(200);
     if (error) throw error;
 
     const active = [], archived = [];
     for (const d of (data || [])) {
+        const m = d.meta || {};
         const row = {
-            code:   d.code   || '—',
-            name:   d.name   || '—',
-            branch: d.branch || '—',
-            type:   d.type   || '—',
+            code:   m.code   || '—',
+            name:   m.name   || '—',
+            branch: m.branch || '—',
+            type:   m.type   || '—',
             amount: d.amount != null ? Number(d.amount) : 0,
-            date:   d.date   || '—'
+            date:   m.date   || '—'
         };
         if (d.is_archived) archived.push(row);
         else               active.push(row);
