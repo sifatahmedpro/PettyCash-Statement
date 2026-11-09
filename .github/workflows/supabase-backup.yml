@@ -32,9 +32,82 @@ jobs:
             -f "supabase_backup_$(date +%Y-%m-%d_%H-%M-%S).sql"
           ls -lh supabase_backup_*.sql
 
+      # B5-6: also back up the auth schema (login users, identities, MFA).
+      # DATA ONLY: Supabase owns the auth table structure, so a restore goes
+      # into a project that already has it. Session-type tables are left out
+      # (users just sign in again) which also keeps the most sensitive tokens
+      # out of the file. Goes to a separate file so the public dump stays
+      # restorable on its own. Storage files are NOT included.
+      - name: Dump auth schema (data only)
+        env:
+          PGCONNECT_TIMEOUT: '30'
+        run: |
+          /usr/lib/postgresql/17/bin/pg_dump "${{ secrets.SUPABASE_DB_URL }}" \
+            --no-owner --no-privileges --data-only \
+            -n auth \
+            -T auth.schema_migrations \
+            -T auth.audit_log_entries \
+            -T auth.refresh_tokens \
+            -T auth.sessions \
+            -T auth.mfa_amr_claims \
+            -T auth.one_time_tokens \
+            -T auth.flow_state \
+            -f "supabase_backup_auth_$(date +%Y-%m-%d_%H-%M-%S).sql"
+          ls -lh supabase_backup_auth_*.sql
+
+      # B5-6: encrypt before upload. The dump holds real business data, so a
+      # plaintext artifact could be downloaded by anyone who can read the repo.
+      # Needs the GitHub secret BACKUP_PASSPHRASE. If it is missing the step
+      # fails and NOTHING is uploaded (never a plaintext copy).
+      - name: Encrypt backup (AES-256, passphrase from secret)
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "::error::Secret BACKUP_PASSPHRASE is not set. Add it at: repo → Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+          for f in supabase_backup_*.sql; do
+            printf '%s' "$BACKUP_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback \
+              --passphrase-fd 0 --symmetric --cipher-algo AES256 -o "$f.gpg" "$f"
+            # quick restore check: the file must decrypt and look like a pg_dump
+            printf '%s' "$BACKUP_PASSPHRASE" | gpg --batch --pinentry-mode loopback \
+              --passphrase-fd 0 --decrypt "$f.gpg" 2>/dev/null | head -n 20 | grep -q "PostgreSQL database dump" \
+              || { echo "::error::Encrypted backup failed the decrypt check"; exit 1; }
+            rm -f "$f"
+          done
+          ls -lh supabase_backup_*.sql.gpg
+
       - name: Upload backup as a workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: supabase-backup-${{ github.run_id }}
-          path: supabase_backup_*.sql
+          path: supabase_backup_*.sql.gpg
           retention-days: 90
+
+      - name: Send email notification on failure
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port:    ${{ secrets.MAIL_PORT }}
+          username:       ${{ secrets.GMAIL_USER }}
+          password:       ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject:        '❌ Supabase Backup Failed — Run #${{ github.run_number }}'
+          to:             ${{ secrets.FAILURE_NOTIFY_EMAIL || 'noreply@example.com' }}
+          from:           'github-actions@officemanagement.app'
+          body: |
+            The daily Supabase database backup failed.
+
+            Run details:
+              Run Number  : ${{ github.run_number }}
+              Repository  : ${{ github.repository }}
+              Triggered by: ${{ github.actor }}
+              Event       : ${{ github.event_name }}
+
+            View full logs:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            ---
+            Automatic notification from GitHub Actions
+        continue-on-error: true
