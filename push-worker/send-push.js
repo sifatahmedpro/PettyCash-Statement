@@ -597,7 +597,7 @@ async function markSeenToday(uid, statusKey) {
 // "seen" and can never be blocked by one either.
 // ══════════════════════════════════════════════════════════════
 
-async function checkTaskReminderCooldown(uid) {
+async function checkTaskReminderCooldown(uid, statusKey) {
     try {
         // SEPARATED COOLDOWN (2026-07-18): previously this also read
         // reminder_state.last_alerted_at (the client's in-app poll timestamp)
@@ -614,6 +614,13 @@ async function checkTaskReminderCooldown(uid) {
         const { data: pushStateRow, error: pushStateErr } =
             await getDB().from('push_state').select('snoozed').eq('uid', uid).maybeSingle();
         if (pushStateErr) throw pushStateErr;
+
+        // A2: honour a Snooze (button = 1 h, swipe-away = 30 min) set for THIS task set.
+        // Only snoozed[statusKey] is read, not keys[] (the 10:00 bunch marks that key seen).
+        const snoozedUntil = statusKey ? pushStateRow?.snoozed?.[statusKey] : null;
+        if (typeof snoozedUntil === 'number' && Date.now() < snoozedUntil) {
+            return { skip: true, reason: `Task set snoozed until ${new Date(snoozedUntil).toISOString()} UTC` };
+        }
 
         const lastSent = pushStateRow?.snoozed?.[TASK_REMINDER_COOLDOWN_KEY] || null;
         if (lastSent && (Date.now() - lastSent) < (TASK_REMINDER_COOLDOWN_MS - TASK_REMINDER_COOLDOWN_SLACK_MS)) {
@@ -1434,7 +1441,7 @@ async function sendTaskReminderToUser(uid, today, subscriptions, { cooldownMode 
     // re-fire every 30 min for the same pending task set. Default mode
     // (the existing 10am bunch call) is completely unchanged.
     const seenCheck = cooldownMode
-        ? await checkTaskReminderCooldown(uid)
+        ? await checkTaskReminderCooldown(uid, statusKey)
         : await checkSeenOrSnoozed(uid, statusKey);
 
     if (seenCheck.skip) {
