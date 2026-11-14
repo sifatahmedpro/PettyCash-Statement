@@ -41,27 +41,50 @@ jobs:
 
       - name: Determine which page to send
         id: page
+        env:
+          # B5-21: the manual input is passed through the environment, not pasted into the shell line.
+          INPUT_PAGE: ${{ github.event.inputs.page }}
+          # B1: the cron expression that started this run (empty for manual runs).
+          SCHEDULE: ${{ github.event.schedule }}
         run: |
           # If manually triggered with a page input, use it.
           # Otherwise derive from current UTC hour (each cron has a unique hour).
           #
-          # Each case matches TWO hours: the cron-fire hour (e.g. 3 for 03:55)
-          # AND the following hour (e.g. 4 for 04:01) so that a slow runner
-          # that crosses the :00 boundary still resolves the correct page
-          # instead of silently falling through to the default.
-          INPUT_PAGE="${{ github.event.inputs.page }}"
+          # Each case matches TWO hours: the cron-fire hour (e.g. 4 for the
+          # 04:00 cron) AND the following hour (e.g. 5), so that a run that
+          # GitHub starts up to an hour late still resolves the correct page.
+          # (B5-8: the pairs used to be 3|4, 5|6 ... from the old :55 crons;
+          # a late 04:00 run at 05:xx then picked the NEXT page.)
           UTC_HOUR=$(date -u +"%H" | sed 's/^0*//')   # strip leading zero → plain int
 
           if [ -n "$INPUT_PAGE" ]; then
-            echo "PAGE=$INPUT_PAGE" >> $GITHUB_OUTPUT
+            case "$INPUT_PAGE" in
+              help|office_issue|business_stats|premium_submit|advance_payment|donation)
+                echo "PAGE=$INPUT_PAGE" >> $GITHUB_OUTPUT ;;
+              *)
+                echo "Unknown page input: not one of the six allowed names" >&2
+                exit 1 ;;
+            esac
+          elif [ -n "$SCHEDULE" ]; then
+            # B1: choose the page from the cron that fired, so a run started late still sends its own page.
+            case "$SCHEDULE" in
+              '0 4 * * *')  echo "PAGE=help"            >> $GITHUB_OUTPUT ;;
+              '0 6 * * *')  echo "PAGE=office_issue"    >> $GITHUB_OUTPUT ;;
+              '0 8 * * *')  echo "PAGE=business_stats"  >> $GITHUB_OUTPUT ;;
+              '0 10 * * *') echo "PAGE=premium_submit"  >> $GITHUB_OUTPUT ;;
+              '0 12 * * *') echo "PAGE=advance_payment" >> $GITHUB_OUTPUT ;;
+              '0 14 * * *') echo "PAGE=donation"        >> $GITHUB_OUTPUT ;;
+              *) echo "Unknown schedule: $SCHEDULE" >&2
+                 exit 1 ;;
+            esac
           else
             case "$UTC_HOUR" in
-              3|4)   echo "PAGE=help"             >> $GITHUB_OUTPUT ;;
-              5|6)   echo "PAGE=office_issue"     >> $GITHUB_OUTPUT ;;
-              7|8)   echo "PAGE=business_stats"   >> $GITHUB_OUTPUT ;;
-              9|10)  echo "PAGE=premium_submit"   >> $GITHUB_OUTPUT ;;
-              11|12) echo "PAGE=advance_payment"  >> $GITHUB_OUTPUT ;;
-              13|14) echo "PAGE=donation"         >> $GITHUB_OUTPUT ;;
+              4|5)   echo "PAGE=help"             >> $GITHUB_OUTPUT ;;
+              6|7)   echo "PAGE=office_issue"     >> $GITHUB_OUTPUT ;;
+              8|9)   echo "PAGE=business_stats"   >> $GITHUB_OUTPUT ;;
+              10|11) echo "PAGE=premium_submit"   >> $GITHUB_OUTPUT ;;
+              12|13) echo "PAGE=advance_payment"  >> $GITHUB_OUTPUT ;;
+              14|15) echo "PAGE=donation"         >> $GITHUB_OUTPUT ;;
               *)     echo "⚠️  Unrecognised UTC hour ($UTC_HOUR) — falling back to help" >&2
                      echo "PAGE=help"             >> $GITHUB_OUTPUT ;;
             esac
@@ -75,3 +98,32 @@ jobs:
           GMAIL_APP_PASSWORD:        ${{ secrets.GMAIL_APP_PASSWORD }}
           TARGET_PAGE:               ${{ steps.page.outputs.PAGE }}
         run: node email-worker/send-email.js
+
+      # B1: a failed digest run now alerts you, like the push and backup workflows do.
+      - name: Send email notification on failure
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port:    ${{ secrets.MAIL_PORT }}
+          username:       ${{ secrets.GMAIL_USER }}
+          password:       ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject:        '❌ Email Digest Failed — Run #${{ github.run_number }} (${{ steps.page.outputs.PAGE }})'
+          to:             ${{ secrets.FAILURE_NOTIFY_EMAIL || 'noreply@example.com' }}
+          from:           'github-actions@officemanagement.app'
+          body: |
+            The email digest workflow failed.
+
+            Run details:
+              Run Number  : ${{ github.run_number }}
+              Repository  : ${{ github.repository }}
+              Page        : ${{ steps.page.outputs.PAGE }}
+              Triggered by: ${{ github.actor }}
+              Event       : ${{ github.event_name }}
+
+            View full logs:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            ---
+            Automatic notification from GitHub Actions
+        continue-on-error: true
