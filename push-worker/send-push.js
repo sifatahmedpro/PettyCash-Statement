@@ -9,7 +9,7 @@
  *   • firebase-admin             → @supabase/supabase-js (service-role key)
  *   • initializeFirebase()       → initializeSupabase()
  *   • admin.firestore()          → supabase.from(...)
- *   • Firestore path structure:
+ *   • the old database path structure:
  *       artifacts/default-app-id/users/{uid}/{collection}
  *     replaced by flat Supabase tables with a `uid` column:
  *       push_subscriptions, push_state, push_logs, push_run_logs,
@@ -60,6 +60,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const webpush          = require('web-push');
 const fs               = require('fs');
+const crypto           = require('crypto');   // Option D: signs the closed-tab action token
 const path             = require('path');
 // Node.js < 22 has no native WebSocket — the Supabase Realtime client needs
 // the 'ws' package passed explicitly as the transport option.
@@ -74,6 +75,10 @@ const CONFIG = {
     SUPABASE_URL:              process.env.SUPABASE_URL              || '',
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
     SUPABASE_ANON_KEY:         process.env.SUPABASE_ANON_KEY         || '',
+    // Option D: shared secret for the closed-tab reminder actions. Must be the SAME value as the
+    // Supabase Edge Function secret ACTION_TOKEN_SECRET. If empty, no token is added and the
+    // notification behaves exactly as before.
+    ACTION_TOKEN_SECRET:       process.env.ACTION_TOKEN_SECRET       || '',
 
     VAPID_PUBLIC_KEY:  process.env.VAPID_PUBLIC_KEY  || '',
     VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY || '',
@@ -91,14 +96,14 @@ const CONFIG = {
     TIMEZONE: 'Asia/Dhaka',
 
     ACTIVE_HOUR_START:   6,
-    ACTIVE_HOUR_END:    24,
+    ACTIVE_HOUR_END:    23,   // N-5 (13 Nov 2026): matches sw.js, which hides pushes 23:00-06:00 Dhaka
 
     MAX_RETRY_ATTEMPTS: 3,
     RETRY_DELAY_MS:     1000,
     BATCH_SIZE:         10,
 
     // ── Standalone 30-min task-reminder tick (2026-07-15) ──────────
-    // Set true ONLY by the '*/30 * * * *' cron in push-notify.yml. Every
+    // Set true ONLY by the 15-minute cron in task-reminder-push.yml. Every
     // other trigger (the 9 existing 2-hour crons, manual dispatch) leaves
     // this false, so their behavior is completely unchanged — see the
     // early-return branch in runPushWorker() below.
@@ -107,7 +112,7 @@ const CONFIG = {
     // ── Task-reminder business hours (2026-07-16) ───────────────────
     // Deliberately separate from ACTIVE_HOUR_START/END above. That pair
     // still governs the 2-hour module bunch (task-manager, fund-archive,
-    // vat-tax, etc.) and stays 6-24, unchanged. This pair governs ONLY the
+    // vat-tax, etc.) and stays 6-23, unchanged. This pair governs ONLY the
     // standalone 30-min task-reminder tick.
     //
     // START (9) still mirrors BUSINESS.REMINDER_HOUR_START in
@@ -137,6 +142,10 @@ const CONFIG = {
 // daily-bunch key is always 'tasks_<hash>' — neither ever equals this string.
 const TASK_REMINDER_COOLDOWN_KEY = '_taskReminder30LastSent';
 const TASK_REMINDER_COOLDOWN_MS  = 30 * 60 * 1000;
+// B5-9: the cron ticks are 15 minutes apart and the stamp is written after sending, so a tick that
+// starts a few seconds early used to see "29 min 55 s" and skip, giving a 45-minute gap.
+// A 2-minute slack keeps the rhythm at 30 minutes without allowing a tick 15 minutes after a send.
+const TASK_REMINDER_COOLDOWN_SLACK_MS = 2 * 60 * 1000;
 
 // ══════════════════════════════════════════════════════════════
 // SCHEDULE TABLE  (unchanged from v5.9)
@@ -371,8 +380,9 @@ function getDB() {
     return _supabase;
 }
 
-// Must match ADMIN_UID in app-backend.js
-const ADMIN_UID = 'd4831f3c-2cd8-4598-9acf-fe509614c3af';
+// Must match ADMIN_UID in common.js. B5-23: may be overridden by an ADMIN_UID environment
+// variable (workflow env or secret); without it the value below is used, as before.
+const ADMIN_UID = (process.env.ADMIN_UID || '').trim() || 'd4831f3c-2cd8-4598-9acf-fe509614c3af';
 
 function initializeSupabase() {
     if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_SERVICE_ROLE_KEY) {
@@ -490,7 +500,7 @@ function buildStatusKey(tag, pendingTasks) {
 
 // ══════════════════════════════════════════════════════════════
 // SEEN-TODAY / SNOOZE STATE
-// Replaces: Firestore pushState/seenToday document
+// Replaces: the old database pushState/seenToday document
 // Now:      push_state table  (uid PK, date, keys[], snoozed jsonb)
 // ══════════════════════════════════════════════════════════════
 
@@ -528,11 +538,32 @@ async function checkSeenOrSnoozed(uid, statusKey) {
     }
 }
 
+// N-1: atomic merge through the SQL function public.push_state_merge, so a module run
+// and a reminder tick can no longer overwrite each other's keys[] / cooldown stamp.
+// Returns true when the RPC succeeded; false means "use the old read-then-upsert path".
+async function _pushStateMerge(uid, action, key, until) {
+    try {
+        const { error } = await getDB().rpc('push_state_merge', {
+            p_uid:    uid,
+            p_date:   getTodayDhaka(),
+            p_action: action,
+            p_key:    key,
+            p_until:  until ?? null,
+        });
+        if (error) throw error;
+        return true;
+    } catch (err) {
+        logger.warn('push_state_merge failed - falling back to read-then-upsert', { uid, action, key, error: err.message });
+        return false;
+    }
+}
+
 async function markSeenToday(uid, statusKey) {
+    if (await _pushStateMerge(uid, 'seen', statusKey, null)) return;
     try {
         const today = getTodayDhaka();
 
-        // Fetch current row first so we can merge keys[] correctly
+        // Fallback (old path): fetch current row first so we can merge keys[] correctly
         const { data: existing } = await getDB()
             .from('push_state')
             .select('date, keys, snoozed')
@@ -585,7 +616,7 @@ async function checkTaskReminderCooldown(uid) {
         if (pushStateErr) throw pushStateErr;
 
         const lastSent = pushStateRow?.snoozed?.[TASK_REMINDER_COOLDOWN_KEY] || null;
-        if (lastSent && (Date.now() - lastSent) < TASK_REMINDER_COOLDOWN_MS) {
+        if (lastSent && (Date.now() - lastSent) < (TASK_REMINDER_COOLDOWN_MS - TASK_REMINDER_COOLDOWN_SLACK_MS)) {
             return { skip: true, reason: `Task reminder cooldown active (last sent ${new Date(lastSent).toISOString()} UTC)` };
         }
         return { skip: false };
@@ -598,25 +629,29 @@ async function checkTaskReminderCooldown(uid) {
 async function markTaskReminderCooldown(uid) {
     const now   = Date.now();
     const today = getTodayDhaka();
-    try {
-        const { data: existing } = await getDB()
-            .from('push_state')
-            .select('date, keys, snoozed')
-            .eq('uid', uid)
-            .maybeSingle();
+    // N-1: atomic stamp of the reserved cooldown key (action 'snooze' stores p_until under p_key).
+    if (!(await _pushStateMerge(uid, 'snooze', TASK_REMINDER_COOLDOWN_KEY, now))) {
+        try {
+            // Fallback (old path)
+            const { data: existing } = await getDB()
+                .from('push_state')
+                .select('date, keys, snoozed')
+                .eq('uid', uid)
+                .maybeSingle();
 
-        const sameDay = existing && existing.date === today;
-        // Preserve today's keys[] (daily module gate) untouched — this write
-        // only ever adds/updates the reserved cooldown key inside snoozed.
-        const keys    = sameDay ? (existing.keys    || []) : (existing?.keys    || []);
-        const snoozed = { ...(existing?.snoozed || {}), [TASK_REMINDER_COOLDOWN_KEY]: now };
+            const sameDay = existing && existing.date === today;
+            // Preserve today's keys[] (daily module gate) untouched - this write
+            // only ever adds/updates the reserved cooldown key inside snoozed.
+            const keys    = sameDay ? (existing.keys    || []) : (existing?.keys    || []);
+            const snoozed = { ...(existing?.snoozed || {}), [TASK_REMINDER_COOLDOWN_KEY]: now };
 
-        const { error } = await getDB()
-            .from('push_state')
-            .upsert({ uid, date: existing?.date || today, keys, snoozed }, { onConflict: 'uid' });
-        if (error) throw error;
-    } catch (err) {
-        logger.warn('markTaskReminderCooldown failed', { uid, error: err.message });
+            const { error } = await getDB()
+                .from('push_state')
+                .upsert({ uid, date: existing?.date || today, keys, snoozed }, { onConflict: 'uid' });
+            if (error) throw error;
+        } catch (err) {
+            logger.warn('markTaskReminderCooldown failed', { uid, error: err.message });
+        }
     }
 
     // SEPARATED COOLDOWN (2026-07-18): no longer stamps reminder_state
@@ -629,7 +664,7 @@ async function markTaskReminderCooldown(uid) {
 
 // ══════════════════════════════════════════════════════════════
 // MARK TASK NOTIFICATIONS AS PUSHED
-// Replaces: Firestore notifications sub-collection update
+// Replaces: the old database notifications sub-collection update
 // Now:      UPDATE notifications SET pushed=true WHERE uid=$1
 //           AND pushed=false AND icon='⏰'
 //           AND timestamp >= (now - 2min)
@@ -672,7 +707,7 @@ async function markTaskNotificationsAsPushed(uid) {
 
 // ══════════════════════════════════════════════════════════════
 // COLLECTION RECORD COUNT + PREVIEW
-// Replaces: Firestore .count().get() + .orderBy().limit().get()
+// Replaces: the old database .count().get() + .orderBy().limit().get()
 // Now:      Supabase count:exact head query + select with order+limit
 //
 // Single-doc modules: reads user_data table (uid, key, data jsonb)
@@ -920,6 +955,18 @@ function _formatHour12(slotHour) {
     return `${h12}:00 ${ampm}`;
 }
 
+// Option D: a signed, expiring token that lets sw.js ask the push-action Edge Function to
+// snooze / mark seen / undo ONE reminder (uid + statusKey) with no tab and no login.
+// Format: base64url(JSON {u,k,e}) + '.' + base64url(HMAC-SHA256(secret, firstPart)).
+// The push payload is end-to-end encrypted to the device, so only that device sees the token.
+const ACTION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+function makeActionToken(uid, statusKey) {
+    if (!CONFIG.ACTION_TOKEN_SECRET || !uid || !statusKey) return '';
+    const body = Buffer.from(JSON.stringify({ u: uid, k: statusKey, e: Date.now() + ACTION_TOKEN_TTL_MS })).toString('base64url');
+    const sig  = crypto.createHmac('sha256', CONFIG.ACTION_TOKEN_SECRET).update(body).digest('base64url');
+    return body + '.' + sig;
+}
+
 function buildTaskReminderPayload(statusKey, pendingTasks, uid, deviceName) {
     const firstTitle = pendingTasks[0]?.title || 'কোনো শিরোনাম নেই';
 
@@ -946,12 +993,13 @@ function buildTaskReminderPayload(statusKey, pendingTasks, uid, deviceName) {
         data: {
             statusKey, uid,
             supabaseUrl:      CONFIG.SUPABASE_URL,        // replaces projectId + apiKey
-            supabaseAnonKey:  CONFIG.SUPABASE_ANON_KEY,   // needed for sw.js push_state REST calls (no tab open)
+            supabaseAnonKey:  CONFIG.SUPABASE_ANON_KEY,   // sw.js sends it as the apikey header to the push-action function (no tab open)
+            actionToken:      makeActionToken(uid, statusKey),   // Option D ('' when the secret is not set)
             deviceName:    deviceName || '',
             type:          'task-reminder',
             taskCount:     pendingTasks.length,
             firstTask:     firstTitle,
-            url:           'https://officemanagement.app/dashboard.html',
+            url:           'https://jbcpettycash.web.app/htmls/dashboard.html',
         },
         actions: [
             { action: 'open',      title: '📋 দেখুন'        },
@@ -978,7 +1026,7 @@ function buildModulePayload(module, statusKey, uid, count, docs, deviceName) {
             deviceName:    deviceName || '',
             type:          'module-notif',
             tag:           module.tag,
-            url:           'https://officemanagement.app/dashboard.html',
+            url:           'https://jbcpettycash.web.app/htmls/dashboard.html',
         },
         actions: [
             { action: 'open',   title: '📂 দেখুন'       },
@@ -1058,7 +1106,7 @@ async function sendWebPushWithRetry(subscription, payload, maxAttempts = CONFIG.
 
 // ══════════════════════════════════════════════════════════════
 // CLEANUP EXPIRED SUBSCRIPTIONS
-// Replaces: Firestore pushSubscriptions sub-collection delete
+// Replaces: the old database pushSubscriptions sub-collection delete
 // Now:      DELETE FROM push_subscriptions WHERE uid=$1
 //           AND endpoint = ANY($2)
 // ══════════════════════════════════════════════════════════════
@@ -1084,7 +1132,7 @@ async function cleanupExpiredSubscriptions(uid, expiredEndpoints) {
 
 // ══════════════════════════════════════════════════════════════
 // RESET SEEN-TODAY STATE FOR ALL USERS
-// Replaces: delete Firestore pushState/seenToday document per user
+// Replaces: delete the old database pushState/seenToday document per user
 // Now:      DELETE FROM push_state WHERE uid = ANY($1)
 // ══════════════════════════════════════════════════════════════
 
@@ -1108,7 +1156,7 @@ async function resetSeenTodayForAllUsers(uids) {
 
 // ══════════════════════════════════════════════════════════════
 // WRITE PUSH DELIVERY LOG
-// Replaces: Firestore pushLogs + pushRunLogs addDoc
+// Replaces: the old database pushLogs + pushRunLogs addDoc
 // Now:      INSERT INTO push_logs and push_run_logs
 // ══════════════════════════════════════════════════════════════
 
@@ -1177,7 +1225,7 @@ async function writePushLog(uid, module, result, count, statusKey, slotHour, dev
 
 // ══════════════════════════════════════════════════════════════
 // FETCH ALL PUSH SUBSCRIPTIONS FOR A USER
-// Replaces: Firestore pushSubscriptions .get()
+// Replaces: the old database pushSubscriptions .get()
 // Now:      SELECT * FROM push_subscriptions WHERE uid=$1
 // ══════════════════════════════════════════════════════════════
 
@@ -1332,7 +1380,7 @@ async function sendModuleNotificationToUser(uid, module, subscriptions, slotHour
 
 // ══════════════════════════════════════════════════════════════
 // SEND TASK REMINDER  (logic unchanged)
-// Replaces: Firestore tasks sub-collection .where('status','!=','done')
+// Replaces: the old database tasks sub-collection .where('status','!=','done')
 // Now:      SELECT * FROM tasks WHERE uid=$1 AND status != 'done'
 // ══════════════════════════════════════════════════════════════
 
@@ -1565,7 +1613,7 @@ async function processUserAtHour(uid, dhakaHour, today) {
 
 // ══════════════════════════════════════════════════════════════
 // MAIN WORKER
-// Replaces: Firestore users collection .select().get()
+// Replaces: the old database users collection .select().get()
 // Now:      SELECT DISTINCT uid FROM push_subscriptions
 //           (only users who have subscriptions need processing)
 // ══════════════════════════════════════════════════════════════
@@ -1595,16 +1643,17 @@ async function runPushWorker() {
         return { success: true, skipped: true, reason: 'Resting hours' };
     }
 
-    // ── Standalone 30-min task-reminder tick (2026-07-15) ─────────────
-    // Only true when push-notify.yml's '*/30 * * * *' cron fired. Handled
+    // ── Standalone task-reminder tick (2026-07-15) ────────────────────
+    // Only true when task-reminder-push.yml fired (cron '7,22,37,52 3-12', 30-min
+    // cooldown between sends; it used to be push-notify.yml's '*/30' cron). Handled
     // and returned here, BEFORE any HOUR_SCHEDULE/hasSlot logic below, so
     // it can never interact with — or be blocked/gated by — the 2-hour
     // module bunch (task-manager's own 10am slot in that bunch is
     // completely untouched by this branch).
     if (CONFIG.TASK_REMINDER_ONLY_MODE) {
-        // Business-hours gate (2026-07-16): the tick's own 6-24 ACTIVE_HOUR
+        // Business-hours gate (2026-07-16): the tick's own 6-23 ACTIVE_HOUR
         // check above only stops it overnight — it does nothing between 6pm
-        // and midnight. This second, tighter check is what actually confines
+        // and 11pm. This second, tighter check is what actually confines
         // the 30-min repeat to 9am-6pm, matching the client's in-app gate.
         const taskReminderActive =
             dhakaHour >= CONFIG.TASK_REMINDER_HOUR_START &&
