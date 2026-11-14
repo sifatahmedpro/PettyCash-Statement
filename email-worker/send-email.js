@@ -132,17 +132,34 @@ const ADMIN_UID = (process.env.ADMIN_UID || '').trim() || 'd4831f3c-2cd8-4598-9a
 // same shape the email builders / PAGE_MAP already expect.
 
 /**
+ * B5: read EVERY row, 1000 at a time. A single query is cut off at the server limit,
+ * which made the totals and counts in the e-mails too low once a table grew.
+ * makeQuery must return a fresh query each call (with its filters and order).
+ */
+async function fetchAllRows(makeQuery) {
+    const PAGE = 1000;
+    let all = [];
+    for (let from = 0; ; from += PAGE) {
+        const { data, error } = await makeQuery().range(from, from + PAGE - 1);
+        if (error) throw error;
+        const rows = data || [];
+        all = all.concat(rows);
+        if (rows.length < PAGE) break;
+    }
+    return all;
+}
+
+/**
  * advance_payments table
  * Columns: uid, code, name, branch, type, description, amount, date, is_archived, timestamp
  */
 async function fetchAdvancePayments(uid) {
-    const { data, error } = await supabase
+    const data = await fetchAllRows(() => supabase
         .from('advance_payments')
         .select('code, name, branch, type, description, amount, date, is_archived')
         .eq('uid', uid)
         .order('timestamp', { ascending: false })
-        .limit(200);
-    if (error) throw error;
+    );
 
     const active = [], archived = [];
     for (const d of (data || [])) {
@@ -197,13 +214,12 @@ async function fetchBusinessStats(uid) {
  * Columns: uid, code, name, branch, type, amount, date, is_archived, timestamp
  */
 async function fetchDonations(uid) {
-    const { data, error } = await supabase
+    const data = await fetchAllRows(() => supabase
         .from('donations')
         .select('amount, is_archived, meta, created_at')
         .eq('uid', uid)
         .order('created_at', { ascending: false })
-        .limit(200);
-    if (error) throw error;
+    );
 
     const active = [], archived = [];
     for (const d of (data || [])) {
@@ -229,13 +245,12 @@ async function fetchDonations(uid) {
  * Columns: uid, title, date (ISO string), status ('done' | 'pending')
  */
 async function fetchAllTasks(uid) {
-    const { data, error } = await supabase
+    const data = await fetchAllRows(() => supabase
         .from('tasks')
         .select('title, date, status')
         .eq('uid', uid)
         .order('date', { ascending: true })
-        .limit(200);
-    if (error) throw error;
+    );
 
     const pending = [], done = [];
     for (const d of (data || [])) {
@@ -252,13 +267,12 @@ async function fetchAllTasks(uid) {
  * Columns: uid, date, description, priority, status ('pending' | 'resolved'), timestamp
  */
 async function fetchIssues(uid) {
-    const { data, error } = await supabase
+    const data = await fetchAllRows(() => supabase
         .from('office_issues')
         .select('date, description, priority, status')
         .eq('uid', uid)
         .order('timestamp', { ascending: false })
-        .limit(200);
-    if (error) throw error;
+    );
 
     const pending = [], resolved = [];
     for (const d of (data || [])) {
@@ -280,13 +294,12 @@ async function fetchIssues(uid) {
  * is_archived=false → active; is_archived=true → archive (was accountsArchive_1st_year)
  */
 async function fetchPremiumStatements(uid) {
-    const { data, error } = await supabase
+    const data = await fetchAllRows(() => supabase
         .from('accounts')
         .select('type, slip_no, amount, deposit, balance, date')
         .eq('uid', uid)
         .order('timestamp', { ascending: false })
-        .limit(400);
-    if (error) throw error;
+    );
 
     const rows = (data || []).map(d => ({
         type:    d.type    || '—',
