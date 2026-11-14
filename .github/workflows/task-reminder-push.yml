@@ -1,7 +1,7 @@
-name: Task Reminder Push (30-min)
+name: Task Reminder Push (15-min)
 
 # ─────────────────────────────────────────────────────────────────────────
-# Standalone 30-minute task-reminder tick, split out of push-notify.yml on
+# Standalone ~15-minute task-reminder tick (30-min cooldown per reminder), split out of push-notify.yml on
 # 2026-07-18 to fix two reliability problems observed in production:
 #
 #   1. It previously fired at exactly '*/30 * * * *' — i.e. :00 and :30 of
@@ -19,7 +19,7 @@ name: Task Reminder Push (30-min)
 #      tick then fired 30 minutes later before the first queued run got a
 #      chance to execute, the first one was silently dropped entirely (no
 #      error, no log — it just never ran). This is what caused the multi-hour
-#      gaps between reminders despite the 30-min cron firing on schedule.
+#      gaps between reminders despite the cron firing on schedule.
 #      Giving this tick its own concurrency group means it can never be
 #      blocked or dropped by the other 9 crons, and vice versa.
 #
@@ -64,7 +64,7 @@ concurrency:
 
 jobs:
   send-task-reminder:
-    name: Send 30-min Task Reminder
+    name: Send Task Reminder (15-min tick)
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -95,6 +95,12 @@ jobs:
           VAPID_PUBLIC_KEY:           ${{ secrets.VAPID_PUBLIC_KEY }}
           VAPID_PRIVATE_KEY:          ${{ secrets.VAPID_PRIVATE_KEY }}
           VAPID_SUBJECT:              ${{ secrets.VAPID_SUBJECT }}
+          ACTION_TOKEN_SECRET:        ${{ secrets.ACTION_TOKEN_SECRET }}
+          FAILURE_NOTIFY_EMAIL:       ${{ secrets.FAILURE_NOTIFY_EMAIL }}
+          MAIL_SERVER:                ${{ secrets.MAIL_SERVER }}
+          MAIL_PORT:                  ${{ secrets.MAIL_PORT }}
+          GMAIL_USER:                 ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD:         ${{ secrets.GMAIL_APP_PASSWORD }}
         run: |
           echo "🔍 Validating secrets..."
 
@@ -132,11 +138,32 @@ jobs:
           echo ""
           echo "✅ All required secrets are present."
 
-      - name: Send 30-min task reminder
+          # N-3: not required (pushes still go out without it), so this only warns. Without it
+          # send-push.js adds no action token, and snooze / seen / undo on a notification with
+          # the tab closed silently do nothing. Must equal the Supabase secret of the same name.
+          if [ -z "$ACTION_TOKEN_SECRET" ]; then
+            echo "::warning title=ACTION_TOKEN_SECRET missing::Closed-tab snooze/seen/undo buttons will not work. Add the secret (same value as in Supabase)."
+          else
+            echo "✅ Found:   ACTION_TOKEN_SECRET (${#ACTION_TOKEN_SECRET} chars)"
+          fi
+
+          # N-2: not required for pushes, but without these a red run alerts nobody
+          # (the failure email falls back to noreply@example.com).
+          if [ -z "$FAILURE_NOTIFY_EMAIL" ]; then
+            echo "::warning title=FAILURE_NOTIFY_EMAIL missing::Failure alert emails go to noreply@example.com, so nobody is told when a run fails. Add the secret."
+          fi
+          for m in MAIL_SERVER MAIL_PORT GMAIL_USER GMAIL_APP_PASSWORD; do
+            if [ -z "${!m}" ]; then
+              echo "::warning title=$m missing::Failure alert email cannot be sent without this secret."
+            fi
+          done
+
+      - name: Send task reminder
         id: push_worker
         env:
           SUPABASE_URL:               ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY:  ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_ANON_KEY:          ${{ secrets.SUPABASE_ANON_KEY }}   # A1: public anon key; sw.js needs it for closed-tab actions
           VAPID_PUBLIC_KEY:           ${{ secrets.VAPID_PUBLIC_KEY }}
           VAPID_PRIVATE_KEY:          ${{ secrets.VAPID_PRIVATE_KEY }}
           VAPID_SUBJECT:              ${{ secrets.VAPID_SUBJECT }}
@@ -146,13 +173,16 @@ jobs:
           GITHUB_ACTOR:               ${{ github.actor }}
           IS_MANUAL_TRIGGER:          ${{ github.event_name == 'workflow_dispatch' }}
           ## Always true in this workflow — this file's only job is the
-          ## standalone 30-min task-reminder tick. Unlike the old shared
+          ## standalone ~15-min task-reminder tick. Unlike the old shared
           ## workflow, there is no need to derive this from
           ## github.event.schedule since every trigger here means the same
           ## thing.
           TASK_REMINDER_ONLY_MODE:    'true'
+          ## Option D (F84): signs the reminder buttons so push-action accepts them
+          ## with the tab closed. Same value as the Supabase secret of this name.
+          ACTION_TOKEN_SECRET:        ${{ secrets.ACTION_TOKEN_SECRET }}
         run: |
-          echo "🚀 Starting 30-min task reminder tick..."
+          echo "🚀 Starting task reminder tick (15-min cadence, 30-min cooldown)..."
           echo ""
           echo "Run information:"
           echo "  Run ID:         $RUN_ID"
@@ -172,7 +202,8 @@ jobs:
           exit $exit_code
         working-directory: push-worker
         timeout-minutes: 8
-        continue-on-error: true
+        ## B5-4: no continue-on-error here, so failure() in the alert step below
+        ## fires. The summary and final-status steps use always(), so they still run.
 
       - name: Generate job summary
         if: always()
@@ -191,6 +222,34 @@ jobs:
           else
             echo "**Status: ❌ Failed — check logs above**" >> $GITHUB_STEP_SUMMARY
           fi
+
+      - name: Send email notification on failure
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port:    ${{ secrets.MAIL_PORT }}
+          username:       ${{ secrets.GMAIL_USER }}
+          password:       ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject:        '❌ Task Reminder Push Failed — Run #${{ github.run_number }}'
+          to:             ${{ secrets.FAILURE_NOTIFY_EMAIL || 'noreply@example.com' }}
+          from:           'github-actions@officemanagement.app'
+          body: |
+            The 15-minute task reminder tick failed.
+
+            Run details:
+              Run Number  : ${{ github.run_number }}
+              Repository  : ${{ github.repository }}
+              Branch      : ${{ github.ref }}
+              Triggered by: ${{ github.actor }}
+              Event       : ${{ github.event_name }}
+
+            View full logs:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            ---
+            Automatic notification from GitHub Actions
+        continue-on-error: true
 
       - name: Final status check
         if: always()
