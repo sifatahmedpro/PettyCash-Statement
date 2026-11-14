@@ -1,0 +1,70 @@
+name: Keep Workflows Alive
+
+# ─────────────────────────────────────────────────────────────────────────
+# B5-11: GitHub switches off scheduled workflows in a public repo after 60
+# days without repo activity. This workflow runs monthly and re-enables
+# every workflow in the repo (including itself) through the Actions API, so
+# the push, email and backup schedules keep running.
+#
+# NOT TESTED YET: after adding this file, run it once by hand
+# (Actions tab → Keep Workflows Alive → Run workflow) and check the log.
+# ─────────────────────────────────────────────────────────────────────────
+
+on:
+  schedule:
+    # 1st and 15th of each month at 03:17 UTC (off the :00 minute on purpose).
+    # Twice a month so one missed run does not leave a gap near day 60.
+    - cron: '17 3 1,15 * *'
+
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: keep-alive
+  cancel-in-progress: false
+
+jobs:
+  keep-alive:
+    name: Re-enable workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Re-enable all workflows
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO:     ${{ github.repository }}
+        run: |
+          echo "🔄 Listing workflows in $REPO ..."
+
+          ids=$(gh api "repos/$REPO/actions/workflows" --paginate \
+                  --jq '.workflows[] | select(.state == "disabled_inactivity") | .id' || true)
+
+          # Also touch the active ones: re-enabling resets the 60-day countdown.
+          all=$(gh api "repos/$REPO/actions/workflows" --paginate \
+                  --jq '.workflows[] | select(.state != "disabled_manually") | .id')
+
+          failed=0
+          for id in $all; do
+            if gh api -X PUT "repos/$REPO/actions/workflows/$id/enable"; then
+              echo "✅ Enabled workflow $id"
+            else
+              echo "::warning::Could not enable workflow $id"
+              failed=1
+            fi
+          done
+
+          if [ -n "$ids" ]; then
+            echo "ℹ️  Workflows that were not active before this run: $ids"
+          fi
+
+          echo ""
+          if [ "$failed" -eq 0 ]; then
+            echo "✅ Done."
+          else
+            echo "⚠️  Some workflows could not be enabled — see warnings above."
+            exit 1
+          fi
