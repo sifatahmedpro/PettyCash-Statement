@@ -4,12 +4,13 @@ name: Web Push Notifications
 
 on:
   schedule:
-    ## Each cron fires at :55 of the preceding UTC hour so the runner
+    ## Eight of the nine crons fire at :55 of the preceding UTC hour (the 00:07 UTC one is the
+    ## exception, B5-3) so the runner
     ## reaches send-push.js before the target Dhaka hour.  The script
     ## matches BOTH the cron-fire hour AND the following hour (see the
     ## "Check Dhaka time" step) to handle runners that cross :00.
     ##
-    ##   cron UTC 23:55 → Dhaka 05:55 → slot Dhaka 06  advance-payment, manpower, policy-files
+    ##   cron UTC 00:07 → Dhaka 06:07 → slot Dhaka 06  advance-payment, manpower, policy-files  (B5-3: was 23:55 = Dhaka 05:55, inside the resting window)
     ##   cron UTC 01:55 → Dhaka 07:55 → slot Dhaka 08  fund-archive, hbl-recovery, vat-tax
     ##   cron UTC 03:55 → Dhaka 09:55 → slot Dhaka 10  task-manager, office-issue, notesheet
     ##   cron UTC 05:55 → Dhaka 11:55 → slot Dhaka 12  lunch-allowance, transport-bill, business-stats
@@ -18,7 +19,7 @@ on:
     ##   cron UTC 11:55 → Dhaka 17:55 → slot Dhaka 18  personal-dues, personal-expense
     ##   cron UTC 13:55 → Dhaka 19:55 → slot Dhaka 20  donation, help, help-requisition
     ##   cron UTC 15:55 → Dhaka 21:55 → slot Dhaka 22  proposal-index, fpr-register, license-archive
-    - cron: '55 23 * * *'   # Dhaka 06:00 → advance-payment · manpower · policy-files
+    - cron: '7 0   * * *'   # Dhaka 06:07 → advance-payment · manpower · policy-files
     - cron: '55 1  * * *'   # Dhaka 08:00 → fund-archive · hbl-recovery · vat-tax
     - cron: '55 3  * * *'   # Dhaka 10:00 → task-manager · office-issue · notesheet
     - cron: '55 5  * * *'   # Dhaka 12:00 → lunch-allowance · transport-bill · business-stats
@@ -28,10 +29,10 @@ on:
     - cron: '55 13 * * *'   # Dhaka 20:00 → donation · help · help-requisition
     - cron: '55 15 * * *'   # Dhaka 22:00 → proposal-index · fpr-register · license-archive
 
-    ## MOVED (2026-07-18): the standalone 30-min task-reminder tick used to
+    ## MOVED (2026-07-18): the standalone task-reminder tick (now every ~15 min) used to
     ## live here as a '*/30 * * * *' cron. It now runs in its own workflow
     ## file, task-reminder-push.yml, with its own concurrency group — this
-    ## avoids two problems that caused it to silently miss its 30-min cadence:
+    ## avoids two problems that caused it to silently miss its cadence:
     ##   1. It fired at exactly :00/:30, which GitHub's own docs flag as the
     ##      highest-load / most-delayed times for scheduled workflows.
     ##   2. It shared a concurrency group with the 9 crons above. With
@@ -99,6 +100,12 @@ jobs:
           VAPID_PUBLIC_KEY:           ${{ secrets.VAPID_PUBLIC_KEY }}
           VAPID_PRIVATE_KEY:          ${{ secrets.VAPID_PRIVATE_KEY }}
           VAPID_SUBJECT:              ${{ secrets.VAPID_SUBJECT }}
+          ACTION_TOKEN_SECRET:        ${{ secrets.ACTION_TOKEN_SECRET }}
+          FAILURE_NOTIFY_EMAIL:       ${{ secrets.FAILURE_NOTIFY_EMAIL }}
+          MAIL_SERVER:                ${{ secrets.MAIL_SERVER }}
+          MAIL_PORT:                  ${{ secrets.MAIL_PORT }}
+          GMAIL_USER:                 ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD:         ${{ secrets.GMAIL_APP_PASSWORD }}
         run: |
           echo "🔍 Validating secrets..."
 
@@ -136,6 +143,26 @@ jobs:
           echo ""
           echo "✅ All required secrets are present."
 
+          # N-3: not required (pushes still go out without it), so this only warns. Without it
+          # send-push.js adds no action token, and snooze / seen / undo on a notification with
+          # the tab closed silently do nothing. Must equal the Supabase secret of the same name.
+          if [ -z "$ACTION_TOKEN_SECRET" ]; then
+            echo "::warning title=ACTION_TOKEN_SECRET missing::Closed-tab snooze/seen/undo buttons will not work. Add the secret (same value as in Supabase)."
+          else
+            echo "✅ Found:   ACTION_TOKEN_SECRET (${#ACTION_TOKEN_SECRET} chars)"
+          fi
+
+          # N-2: not required for pushes, but without these a red run alerts nobody
+          # (the failure email falls back to noreply@example.com).
+          if [ -z "$FAILURE_NOTIFY_EMAIL" ]; then
+            echo "::warning title=FAILURE_NOTIFY_EMAIL missing::Failure alert emails go to noreply@example.com, so nobody is told when a run fails. Add the secret."
+          fi
+          for m in MAIL_SERVER MAIL_PORT GMAIL_USER GMAIL_APP_PASSWORD; do
+            if [ -z "${!m}" ]; then
+              echo "::warning title=$m missing::Failure alert email cannot be sent without this secret."
+            fi
+          done
+
       # ── Step 5: Show current Dhaka time and active slot ───────
       - name: Check Dhaka time and active slot
         id: dhaka_time
@@ -156,12 +183,13 @@ jobs:
             *)     slot_name="(no scheduled slot — force_send or manual trigger required)" ;;
           esac
 
-          if [ $dhaka_hour -ge 6 ] && [ $dhaka_hour -lt 24 ]; then
+          # N-5: resting window aligned with sw.js (hides pushes 23:00-06:00 Dhaka). Display only.
+          if [ $dhaka_hour -ge 6 ] && [ $dhaka_hour -lt 23 ]; then
             is_active="true"
             status="🟢 Active"
           else
             is_active="false"
-            status="🔴 Resting (00:00–06:00 Dhaka)"
+            status="🔴 Resting (23:00–06:00 Dhaka)"
           fi
 
           echo "is_active=$is_active"   >> $GITHUB_OUTPUT
@@ -180,9 +208,11 @@ jobs:
         env:
           SUPABASE_URL:               ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY:  ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_ANON_KEY:          ${{ secrets.SUPABASE_ANON_KEY }}   # A1: public anon key; sw.js needs it for closed-tab actions
           VAPID_PUBLIC_KEY:           ${{ secrets.VAPID_PUBLIC_KEY }}
           VAPID_PRIVATE_KEY:          ${{ secrets.VAPID_PRIVATE_KEY }}
           VAPID_SUBJECT:              ${{ secrets.VAPID_SUBJECT }}
+          ACTION_TOKEN_SECRET:        ${{ secrets.ACTION_TOKEN_SECRET }}   # Option D: signs the closed-tab action token
           FORCE_SEND:                 ${{ github.event.inputs.force_send }}
           DRY_RUN:                    ${{ github.event.inputs.dry_run }}
           RESET_SEEN_TODAY:           ${{ github.event.inputs.reset_seen_today || 'false' }}
@@ -191,7 +221,7 @@ jobs:
           GITHUB_ACTOR:               ${{ github.actor }}
           IS_MANUAL_TRIGGER:          ${{ github.event_name == 'workflow_dispatch' }}
           ## MOVED (2026-07-18): TASK_REMINDER_ONLY_MODE is no longer set here —
-          ## the 30-min tick that used it now runs entirely from
+          ## the reminder tick that used it now runs entirely from
           ## task-reminder-push.yml. Leaving it unset here is equivalent to the
           ## old "false" value for every trigger this workflow still handles
           ## (the 9 module-bunch crons + manual dispatch), so send-push.js's
@@ -219,7 +249,9 @@ jobs:
           exit $exit_code
         working-directory: push-worker
         timeout-minutes: 25
-        continue-on-error: true
+        ## B5-4: no continue-on-error here. With it, the step's conclusion stays
+        ## "success", so failure() in Steps 9-10 is false and no alert is sent.
+        ## Steps 7, 8 and 11 use always(), so they still run after a failure.
 
       # ── Step 7: Generate job summary ──────────────────────────
       - name: Generate job summary
@@ -255,7 +287,7 @@ jobs:
           echo "## Schedule reference"                         >> $GITHUB_STEP_SUMMARY
           echo "| Dhaka time | UTC cron | Modules |"           >> $GITHUB_STEP_SUMMARY
           echo "|---|---|---|"                                  >> $GITHUB_STEP_SUMMARY
-          echo "| 06:00 | 23:55 (prev day) | advance-payment · manpower · policy-files |"            >> $GITHUB_STEP_SUMMARY
+          echo "| 06:00 | 00:07 | advance-payment · manpower · policy-files |"            >> $GITHUB_STEP_SUMMARY
           echo "| 08:00 | 01:55 | fund-archive · hbl-recovery · vat-tax |"                >> $GITHUB_STEP_SUMMARY
           echo "| 10:00 | 03:55 | task-manager · office-issue · notesheet |"              >> $GITHUB_STEP_SUMMARY
           echo "| 12:00 | 05:55 | lunch-allowance · transport-bill · business-stats |"    >> $GITHUB_STEP_SUMMARY
@@ -353,7 +385,6 @@ jobs:
               Triggered by: ${{ github.actor }}
               Event       : ${{ github.event_name }}
               Slot        : ${{ steps.dhaka_time.outputs.slot_name }}
-              Timestamp   : $(date -u +'%Y-%m-%d %H:%M:%S UTC')
 
             View full logs:
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
