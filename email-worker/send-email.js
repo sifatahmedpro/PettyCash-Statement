@@ -123,8 +123,9 @@ function getTargetPage() {
     return map[dhakaHour] || null;
 }
 
-// ── 4. Admin UID (matches app-backend.js) ─────────────────────
-const ADMIN_UID = 'd4831f3c-2cd8-4598-9acf-fe509614c3af';
+// ── 4. Admin UID (matches common.js) ─────────────────────────────
+// B5-23: may be overridden by an ADMIN_UID environment variable; without it the value below is used, as before.
+const ADMIN_UID = (process.env.ADMIN_UID || '').trim() || 'd4831f3c-2cd8-4598-9acf-fe509614c3af';
 
 // ── 5. Supabase data fetchers ─────────────────────────────────
 // Each fetcher queries the flat Supabase table and reconstructs the
@@ -312,6 +313,13 @@ function toBnNum(n) {
     return String(n).replace(/\d/g, ch => '০১২৩৪৫৬৭৮৯'[+ch]);
 }
 
+// B5-12: text from the database must not become HTML in the e-mail body.
+function escHtml(v) {
+    return String(v === null || v === undefined ? '' : v)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function formatTaka(val) {
     if (val === '—' || val === null || val === undefined) return '—';
     const num = Number(val);
@@ -394,7 +402,7 @@ ${FONT_IMPORT}
                   </span>
                 </td>
                 <td style="padding-left:10px">
-                  ${officeName ? `<span style="color:rgba(255,255,255,.85);font-size:16px;font-family:${FONT_STACK}">📍 ${officeName}</span>` : ''}
+                  ${officeName ? `<span style="color:rgba(255,255,255,.85);font-size:16px;font-family:${FONT_STACK}">📍 ${escHtml(officeName)}</span>` : ''}
                 </td>
               </tr>
             </table>
@@ -475,7 +483,7 @@ function tableHTML(headers, rows, emptyMsg, { amountCols = [], badgeCols = {}, r
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
           <tr>
             <td align="center" style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:12px;padding:20px">
-              <div style="font-size:24pxmargin-bottom:8px">✅</div>
+              <div style="font-size:24px;margin-bottom:8px">✅</div>
               <p style="margin:0;color:#15803d;font-size:16px;font-weight:900;font-family:${FONT_STACK}">${emptyMsg}</p>
             </td>
           </tr>
@@ -494,10 +502,10 @@ function tableHTML(headers, rows, emptyMsg, { amountCols = [], badgeCols = {}, r
         const bg   = i % 2 === 0 ? '#f8f8ff' : '#ffffff';
         const tds  = vals.map((v, ci) => {
             const key = keys[ci];
-            let cell  = v ?? '—';
-            if (amountCols.includes(key) || amountCols.includes(ci)) cell = formatTaka(cell);
-            if (badgeCols[key] === 'priority') cell = priorityBadge(String(v));
-            else if (badgeCols[key] === 'type') cell = typeBadge(String(v));
+            let cell  = escHtml(v ?? '—');
+            if (amountCols.includes(key) || amountCols.includes(ci)) cell = escHtml(formatTaka(v ?? '—'));
+            if (badgeCols[key] === 'priority') cell = priorityBadge(String(v));   // label comes from a fixed map
+            else if (badgeCols[key] === 'type') cell = typeBadge(escHtml(String(v)));
             return `<td style="padding:9px 12px;border-bottom:1px solid #ebebfc;color:#1f2937;
                                font-size:16px;font-family:${FONT_STACK};vertical-align:middle">${cell}</td>`;
         }).join('');
@@ -814,7 +822,7 @@ async function writeEmailLog(uid, page, targetPageKey, status, recordCount, deta
 async function sendEmail({ toEmail, toName, subject, htmlBody }) {
     await transporter.sendMail({
         from:    `"অফিস ম্যানেজমেন্ট সিস্টেম" <${process.env.GMAIL_USER}>`,
-        to:      `"${toName}" <${toEmail}>`,
+        to:      { name: String(toName || ''), address: toEmail },
         subject: subject,
         html:    htmlBody
     });
@@ -951,6 +959,7 @@ async function run() {
 
             const toName = officeName || sub.email;
 
+            let marked = false, sent = false;   // B5-7: track the dedup mark and the real send
             try {
                 const data = await page.fetch(uid);
 
@@ -970,9 +979,11 @@ async function run() {
                     continue;
                 }
 
+                marked = true;
                 const htmlBody = page.buildEmail({ dateLabel, timeSlot: page.timeSlot, data, officeName });
                 const subject  = page.subject(dateLabel, data);
                 await sendEmail({ toEmail: sub.email, toName, subject, htmlBody });
+                sent = true;
                 console.log(`  📧 [${page.name}] → ${sub.email} — OK (${page.totalRows(data)} records)`);
                 totalSent++;
                 await writeEmailLog(uid, page, targetPageKey, 'sent', page.totalRows(data), `${page.name} → ${sub.email} (${page.totalRows(data)} রেকর্ড)`);
@@ -980,6 +991,21 @@ async function run() {
             } catch (err) {
                 console.error(`  ❌ [${page.name}] FAILED for ${uid}: ${err.message}`);
                 totalFailed++;
+                // B5-7: the dedup row was written before the send. If the email was
+                // not sent, remove it so a rerun can retry instead of skipping as "dedup".
+                if (marked && !sent) {
+                    try {
+                        const { error: delErr } = await supabase
+                            .from('email_sent_today')
+                            .delete()
+                            .eq('uid', uid)
+                            .eq('page_key', targetPageKey)
+                            .eq('sent_date', today);
+                        if (delErr) console.warn(`  ⚠️  Could not clear dedup row: ${delErr.message}`);
+                    } catch (e) {
+                        console.warn(`  ⚠️  Could not clear dedup row: ${e.message}`);
+                    }
+                }
                 await writeEmailLog(uid, page, targetPageKey, 'failed', null, `${page.name} — ব্যর্থ: ${err.message}`);
             }
 
@@ -994,7 +1020,8 @@ async function run() {
 
     console.log('─────────────────────────────────');
     console.log(`✅ Done. Sent: ${totalSent} | Failed: ${totalFailed} | Skipped: ${totalSkipped}`);
-    process.exit(0);
+    // B5-7: a run with failed emails must not end green.
+    process.exit(totalFailed > 0 ? 1 : 0);
 }
 
 run();
