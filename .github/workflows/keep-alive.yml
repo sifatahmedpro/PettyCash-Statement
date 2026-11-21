@@ -68,3 +68,32 @@ jobs:
             echo "⚠️  Some workflows could not be enabled — see warnings above."
             exit 1
           fi
+
+      # KA-C2: a failed run now alerts you, like the push, e-mail and backup workflows do.
+      - name: Send email notification on failure
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port:    ${{ secrets.MAIL_PORT }}
+          username:       ${{ secrets.GMAIL_USER }}
+          password:       ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject:        '❌ Keep Workflows Alive Failed — Run #${{ github.run_number }}'
+          to:             ${{ secrets.FAILURE_NOTIFY_EMAIL || 'noreply@example.com' }}
+          from:           'github-actions[bot]@users.noreply.github.com'
+          body: |
+            The monthly keep-alive job failed. Scheduled workflows (push, e-mail, backup)
+            may be switched off after 60 days without repository activity.
+
+            Run details:
+              Run Number  : ${{ github.run_number }}
+              Repository  : ${{ github.repository }}
+              Triggered by: ${{ github.actor }}
+              Event       : ${{ github.event_name }}
+
+            View full logs:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            ---
+            Automatic notification from GitHub Actions
+        continue-on-error: true
