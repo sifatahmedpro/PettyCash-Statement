@@ -11,6 +11,8 @@ on:
 jobs:
   backup:
     runs-on: ubuntu-latest
+    # SB-C2: a dump that hangs after connecting no longer runs for 6 hours.
+    timeout-minutes: 30
     steps:
       - name: Install PostgreSQL 17 client tools
         run: |
@@ -25,12 +27,22 @@ jobs:
       - name: Dump full public schema (structure + data)
         env:
           PGCONNECT_TIMEOUT: '30'
+          # SB-C1: the address goes in through the environment, not into the script text.
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
-          /usr/lib/postgresql/17/bin/pg_dump "${{ secrets.SUPABASE_DB_URL }}" \
+          /usr/lib/postgresql/17/bin/pg_dump "$DB_URL" \
             --no-owner --no-privileges \
             -n public \
             -f "supabase_backup_$(date +%Y-%m-%d_%H-%M-%S).sql"
           ls -lh supabase_backup_*.sql
+          # SB-C3: refuse an empty or nearly empty dump (structure alone is far above 20000 bytes).
+          for f in supabase_backup_2*.sql; do
+            size=$(stat -c %s "$f")
+            if [ "$size" -lt 20000 ]; then
+              echo "::error::Public dump is only $size bytes (minimum 20000). Not uploading."
+              exit 1
+            fi
+          done
 
       # B5-6: also back up the auth schema (login users, identities, MFA).
       # DATA ONLY: Supabase owns the auth table structure, so a restore goes
@@ -41,8 +53,9 @@ jobs:
       - name: Dump auth schema (data only)
         env:
           PGCONNECT_TIMEOUT: '30'
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}   # SB-C1
         run: |
-          /usr/lib/postgresql/17/bin/pg_dump "${{ secrets.SUPABASE_DB_URL }}" \
+          /usr/lib/postgresql/17/bin/pg_dump "$DB_URL" \
             --no-owner --no-privileges --data-only \
             -n auth \
             -T auth.schema_migrations \
@@ -95,7 +108,7 @@ jobs:
           password:       ${{ secrets.GMAIL_APP_PASSWORD }}
           subject:        '❌ Supabase Backup Failed — Run #${{ github.run_number }}'
           to:             ${{ secrets.FAILURE_NOTIFY_EMAIL || 'noreply@example.com' }}
-          from:           'github-actions@officemanagement.app'
+          from:           'github-actions[bot]@users.noreply.github.com'
           body: |
             The daily Supabase database backup failed.
 
