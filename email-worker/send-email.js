@@ -22,7 +22,7 @@
  *   donations                     → donations            (uid, is_archived, …)
  *   tasks                         → tasks                (uid, status, date, …)
  *   office_issues                 → office_issues        (uid, status, priority, …)
- *   accounts / accountsArchive_*  → accounts             (uid, is_archived, …)
+ *   accounts / accountsArchive_*  → premium_accounts     (uid, type, slip_no, deposit, balance, date, …)
  *   emailSentToday/{today}_{key}  → email_sent_today     (uid, page_key, sent_date)
  *   emailLogs                     → email_logs           (uid, …)
  *   emailRunLogs                  → email_run_logs       (uid, …)
@@ -187,10 +187,12 @@ async function fetchAdvancePayments(uid) {
  */
 async function fetchBusinessStats(uid) {
     const rows = [];
+    let total = 0;
     try {
-        const { data, error } = await supabase
+        // SE-C3: ask for the exact count too, because .limit(50) cuts the list
+        const { data, error, count } = await supabase
             .from('business_analysis_archives')
-            .select('meta')
+            .select('meta', { count: 'exact' })
             .eq('uid', uid)
             .order('timestamp', { ascending: false })
             .limit(50);
@@ -203,10 +205,14 @@ async function fetchBusinessStats(uid) {
                 createdBy: meta.createdBy    || '—'
             });
         }
+        total = (typeof count === 'number' && count >= rows.length) ? count : rows.length;
     } catch (e) {
+        // SE-B1: rethrow so the run counts this page as failed and clears the dedup row
+        // (like the other fetchers) instead of sending a wrong "no reports" e-mail.
         console.warn('  ⚠️ business_analysis_archives fetch error:', e.message);
+        throw e;
     }
-    return { rows, total: rows.length };
+    return { rows, total };
 }
 
 /**
@@ -289,20 +295,20 @@ async function fetchIssues(uid) {
 }
 
 /**
- * accounts table  (mirrors FIX-22 from send-push.js v5.7)
- * Columns: uid, type, slip_no, amount, deposit, balance, date, is_archived, timestamp
- * is_archived=false → active; is_archived=true → archive (was accountsArchive_1st_year)
+ * premium_accounts table  (the table premium-submit.html writes; the old `accounts` table is empty)
+ * Columns: uid, type, type_display, slip_no, amount, deposit, balance, date (text YYYY-MM-DD), created_at
+ * There is no is_archived column: saved reports are in premium_archives and are not listed here.
  */
 async function fetchPremiumStatements(uid) {
     const data = await fetchAllRows(() => supabase
-        .from('accounts')
-        .select('type, slip_no, amount, deposit, balance, date')
+        .from('premium_accounts')
+        .select('type, type_display, slip_no, amount, deposit, balance, date')
         .eq('uid', uid)
-        .order('timestamp', { ascending: false })
+        .order('created_at', { ascending: false })
     );
 
     const rows = (data || []).map(d => ({
-        type:    d.type    || '—',
+        type:    d.type_display || d.type || '—',
         slipNo:  d.slip_no || '—',
         amount:  d.amount  != null ? Number(d.amount)  : 0,
         deposit: d.deposit != null ? Number(d.deposit) : 0,
@@ -310,7 +316,7 @@ async function fetchPremiumStatements(uid) {
         date:    d.date    || '—'
     }));
     // Sort newest first
-    rows.sort((a, b) => (b.date > a.date ? 1 : -1));
+    rows.sort((a, b) => (b.date > a.date) - (b.date < a.date)); // dates are YYYY-MM-DD text; equal dates keep the query order
     const totalDeposit = rows.reduce((s, r) => s + r.deposit, 0);
     const totalBalance = rows.reduce((s, r) => s + r.balance, 0);
     return { rows, totalDeposit, totalBalance };
@@ -375,9 +381,6 @@ function emailShell({ headerAccent = '#251577', headerAccent2 = '#3730a3', icon,
 <html lang="bn" dir="ltr">
 <head>
     <meta charset="UTF-8">
-    <script>
-        (function(){try{var m=document.cookie.match(/(?:^|;\s*)oms_dark_mode=([^;]*)/);if(m&&decodeURIComponent(m[1])==='true'){document.documentElement.classList.add('dark-mode');}}catch(e){}})();
-    </script>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 ${FONT_IMPORT}
 <title>${title}</title>
@@ -450,7 +453,7 @@ ${FONT_IMPORT}
         <tr>
           <td style="background:linear-gradient(135deg,#f5f5ff,#eef0fc);border:1.5px solid #dde0f8;
                      border-radius:12px;padding:16px 20px">
-            <p style="margin:0 0 6px;font-size:.832px;font-weight:900;color:#251577;font-family:${FONT_STACK}">
+            <p style="margin:0 0 6px;font-size:13px;font-weight:900;color:#251577;font-family:${FONT_STACK}">
               💡 দ্রুত টিপস
             </p>
             <p style="margin:0;font-size:16px;color:#4b5563;line-height:1.6;font-family:${FONT_STACK}">
@@ -468,7 +471,7 @@ ${FONT_IMPORT}
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
         <tr>
           <td>
-            <p style="margin:0 0 4px;color:rgba(255,255,255,.9);font-size:.832px;font-weight:900;font-family:${FONT_STACK}">
+            <p style="margin:0 0 4px;color:rgba(255,255,255,.9);font-size:13px;font-weight:900;font-family:${FONT_STACK}">
               অফিস ম্যানেজমেন্ট সিস্টেম
             </p>
             <p style="margin:0;color:rgba(255,255,255,.5);font-size:16px;font-family:${FONT_STACK}">
@@ -490,7 +493,7 @@ ${FONT_IMPORT}
 </html>`;
 }
 
-function tableHTML(headers, rows, emptyMsg, { amountCols = [], badgeCols = {}, rowLimit = 50 } = {}) {
+function tableHTML(headers, rows, emptyMsg, { amountCols = [], badgeCols = {}, rowLimit = 50, moreCount = 0 } = {}) {
     if (rows.length === 0) {
         return `
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
@@ -504,7 +507,7 @@ function tableHTML(headers, rows, emptyMsg, { amountCols = [], badgeCols = {}, r
     }
 
     const displayRows = rows.slice(0, rowLimit);
-    const extraRows   = rows.length - displayRows.length;
+    const extraRows   = rows.length - displayRows.length + moreCount;   // SE-C3: moreCount = rows not fetched
     const thStyle = `padding:10px 12px;text-align:left;font-size:16px;color:#ffffff;
                      font-weight:900;background:#251577;font-family:${FONT_STACK};white-space:nowrap`;
     const ths = headers.map(h => `<th style="${thStyle}">${h}</th>`).join('');
@@ -589,17 +592,18 @@ function buildAdvancePaymentEmail({ dateLabel, timeSlot, data, officeName }) {
 
 function buildBusinessStatsEmail({ dateLabel, timeSlot, data, officeName }) {
     const { rows } = data;
+    const total = Math.max(rows.length, Number(data.total) || 0);   // SE-C3: real count, not the cut-off count
     const body = `
-        ${sectionTitle('📊', 'সকল ব্যবসা পরিসংখ্যান রিপোর্ট', rows.length)}
+        ${sectionTitle('📊', 'সকল ব্যবসা পরিসংখ্যান রিপোর্ট', total)}
         ${tableHTML(['তারিখ','ইনচার্জ','তৈরিকারী'], rows,
-            'কোনো সংরক্ষিত রিপোর্ট পাওয়া যায়নি।')}`;
+            'কোনো সংরক্ষিত রিপোর্ট পাওয়া যায়নি।', { moreCount: total - rows.length })}`;
     return emailShell({
         headerAccent: '#251577', headerAccent2: '#1d4ed8',
         icon: '📊', title: 'ব্যবসা পরিসংখ্যান — সম্পূর্ণ তালিকা',
         subtitle: 'সকল সংরক্ষিত রিপোর্টের বিবরণ',
         dateLabel, timeSlot, officeName, bodyHTML: body,
         statCards: [
-            { icon: '📋', label: 'মোট রিপোর্ট', value: toBnNum(rows.length) },
+            { icon: '📋', label: 'মোট রিপোর্ট', value: toBnNum(total) },
         ]
     });
 }
@@ -630,11 +634,11 @@ function buildDonationEmail({ dateLabel, timeSlot, data, officeName }) {
 
 function buildHelpEmail({ dateLabel, timeSlot, data, officeName }) {
     const { pending, done } = data;
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayStr(); // Dhaka date, same as the rest of this file
     const overdue = pending.filter(r => r.date !== '(তারিখ নেই)' && r.date < today).length;
     const body = `
         ${sectionTitle('⏳', 'মুলতবি টাস্কসমূহ', pending.length)}
-        ${pending.length > 0 ? `<p style="font-size:.832px;color:#dc2626;font-weight:600;margin:0 0 12px;font-family:${FONT_STACK}">
+        ${pending.length > 0 ? `<p style="font-size:13px;color:#dc2626;font-weight:600;margin:0 0 12px;font-family:${FONT_STACK}">
             ⚠️ এই টাস্কগুলো এখনও সম্পন্ন হয়নি। দ্রুত সম্পন্ন করুন।</p>` : ''}
         ${tableHTML(['টাস্কের শিরোনাম','নির্ধারিত তারিখ'], pending,
             'অভিনন্দন! সকল টাস্ক সম্পন্ন হয়েছে।')}
@@ -659,7 +663,7 @@ function buildIssueEmail({ dateLabel, timeSlot, data, officeName }) {
     const highCount = pending.filter(r => r.priority === 'high').length;
     const body = `
         ${sectionTitle('⚠️', 'চলমান সমস্যাসমূহ', pending.length)}
-        ${highCount > 0 ? `<p style="font-size:.832px;color:#dc2626;font-weight:600;margin:0 0 12px;font-family:${FONT_STACK}">
+        ${highCount > 0 ? `<p style="font-size:13px;color:#dc2626;font-weight:600;margin:0 0 12px;font-family:${FONT_STACK}">
             🔴 ${toBnNum(highCount)}টি উচ্চ-গুরুত্বের সমস্যা রয়েছে — তাৎক্ষণিক পদক্ষেপ নিন।</p>` : ''}
         ${tableHTML(['তারিখ','সমস্যার বিবরণ','গুরুত্ব'], pending,
             'কোনো চলমান সমস্যা নেই। সবকিছু ঠিকঠাক আছে!', { badgeCols: { priority: 'priority' } })}
@@ -695,7 +699,7 @@ function buildPremiumEmail({ dateLabel, timeSlot, data, officeName }) {
             'কোনো প্রিমিয়াম জমার রেকর্ড নেই।', { badgeCols: { type: 'type' } })}
         ${rows.length > 0 ? `
         <p style="text-align:right;font-weight:900;color:#0369a1;font-family:${FONT_STACK};margin:8px 0 0">
-          মোট জমা: ${formatTaka(totalDeposit)} &nbsp;|&nbsp; মোট বকেয়া: ${formatTaka(totalBalance)}
+          মোট জমা: ${formatTaka(totalDeposit)}
         </p>` : ''}`;
     return emailShell({
         headerAccent: '#0369a1', headerAccent2: '#251577',
@@ -705,7 +709,6 @@ function buildPremiumEmail({ dateLabel, timeSlot, data, officeName }) {
         statCards: [
             { icon: '📑', label: 'মোট এন্ট্রি', value: toBnNum(rows.length) },
             { icon: '✅', label: 'মোট জমা',      value: formatTaka(totalDeposit) },
-            { icon: '🔔', label: 'মোট বকেয়া',   value: formatTaka(totalBalance) },
         ]
     });
 }
@@ -744,7 +747,7 @@ const PAGE_MAP = {
         totalRows:  (data) => data.rows.length,
         buildEmail: (p)   => buildBusinessStatsEmail(p),
         subject:    (dateLabel, data) =>
-            `📊 ব্যবসা পরিসংখ্যান — ${data.rows.length}টি রিপোর্ট · ${dateLabel}`,
+            `📊 ব্যবসা পরিসংখ্যান — ${Math.max(data.rows.length, Number(data.total) || 0)}টি রিপোর্ট · ${dateLabel}`,
     },
     premium_submit: {
         name: 'প্রিমিয়াম জমা', icon: '🏦', timeSlot: '⏰ বিকাল ৪টা',
@@ -780,7 +783,7 @@ const PAGE_MAP = {
 //   Per-user:  email_logs table   (uid, tag, label, …)
 //   Global:    email_run_logs table (uid, tag, label, …)
 //
-// Schema mirrors push logs so notification-log_module.js can read
+// Schema mirrors push logs so notification-log.html can read
 // both tables with identical field names (FIX 6 preserved).
 // ─────────────────────────────────────────────────────────────
 
@@ -816,14 +819,16 @@ async function writeEmailLog(uid, page, targetPageKey, status, recordCount, deta
         };
 
         // 1. Per-user email log
-        await supabase.from('email_logs').insert(logEntry);
+        const { error: logErr1 } = await supabase.from('email_logs').insert(logEntry);
+        if (logErr1) console.warn(`  ⚠️  email_logs insert failed (non-fatal): ${logErr1.message}`);
 
         // 2. Global run log — MUST use ADMIN_UID so fetchEmailRunLogs()
         // (which queries .eq('uid', ADMIN_UID)) can find these rows.
         // Previously passed the user's uid here, causing the notification
         // log page to always return 0 email run log rows. Mirrors the
         // identical fix already present in send-push.js writePushLog().
-        await supabase.from('email_run_logs').insert({ ...logEntry, uid: ADMIN_UID });
+        const { error: logErr2 } = await supabase.from('email_run_logs').insert({ ...logEntry, uid: ADMIN_UID });
+        if (logErr2) console.warn(`  ⚠️  email_run_logs insert failed (non-fatal): ${logErr2.message}`);
 
     } catch (err) {
         console.warn(`  ⚠️  writeEmailLog failed (non-fatal): ${err.message}`);
@@ -831,6 +836,19 @@ async function writeEmailLog(uid, page, targetPageKey, status, recordCount, deta
 }
 
 // ── 10. Send email helper ─────────────────────────────────────
+
+// SE-B2: mask the address in console output (public Actions logs), e.g. a***@gmail.com
+function maskEmail(email) {
+    const s = String(email || '');
+    const at = s.indexOf('@');
+    if (at < 1) return '***';
+    return s.slice(0, 1) + '***' + s.slice(at);
+}
+
+// SE-B2: mask any address inside a text (mail-server error messages can repeat the recipient)
+function maskEmailsInText(text) {
+    return String(text == null ? '' : text).replace(/[^\s<>"'(),;:]+@[^\s<>"'(),;:]+/g, m => maskEmail(m));
+}
 
 async function sendEmail({ toEmail, toName, subject, htmlBody }) {
     await transporter.sendMail({
@@ -997,12 +1015,12 @@ async function run() {
                 const subject  = page.subject(dateLabel, data);
                 await sendEmail({ toEmail: sub.email, toName, subject, htmlBody });
                 sent = true;
-                console.log(`  📧 [${page.name}] → ${sub.email} — OK (${page.totalRows(data)} records)`);
+                console.log(`  📧 [${page.name}] → ${maskEmail(sub.email)} — OK (${page.totalRows(data)} records)`);
                 totalSent++;
                 await writeEmailLog(uid, page, targetPageKey, 'sent', page.totalRows(data), `${page.name} → ${sub.email} (${page.totalRows(data)} রেকর্ড)`);
 
             } catch (err) {
-                console.error(`  ❌ [${page.name}] FAILED for ${uid}: ${err.message}`);
+                console.error(`  ❌ [${page.name}] FAILED for ${uid}: ${maskEmailsInText(err.message)}`);
                 totalFailed++;
                 // B5-7: the dedup row was written before the send. If the email was
                 // not sent, remove it so a rerun can retry instead of skipping as "dedup".
