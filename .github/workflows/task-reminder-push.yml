@@ -233,7 +233,7 @@ jobs:
           password:       ${{ secrets.GMAIL_APP_PASSWORD }}
           subject:        '❌ Task Reminder Push Failed — Run #${{ github.run_number }}'
           to:             ${{ secrets.FAILURE_NOTIFY_EMAIL || 'noreply@example.com' }}
-          from:           'github-actions@officemanagement.app'
+          from:           'github-actions[bot]@users.noreply.github.com'
           body: |
             The 15-minute task reminder tick failed.
 
