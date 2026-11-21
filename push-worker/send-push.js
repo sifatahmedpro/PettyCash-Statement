@@ -82,7 +82,7 @@ const CONFIG = {
 
     VAPID_PUBLIC_KEY:  process.env.VAPID_PUBLIC_KEY  || '',
     VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY || '',
-    VAPID_SUBJECT:     process.env.VAPID_SUBJECT     || 'mailto:support@officemanagement.app',
+    VAPID_SUBJECT:     process.env.VAPID_SUBJECT     || 'https://jbcpettycash.web.app',
 
     RUN_ID:            process.env.RUN_ID              || Math.random().toString(36).slice(2, 8),
     RUN_NUMBER:        process.env.WORKFLOW_RUN_NUMBER || 'unknown',
@@ -116,18 +116,18 @@ const CONFIG = {
     // standalone 30-min task-reminder tick.
     //
     // START (9) still mirrors BUSINESS.REMINDER_HOUR_START in
-    // app-constants.js (the client's in-app checkAndRemind() gate in
-    // app-reminder.js), so the phone push and the browser tab reminder both
+    // common.js (the client's in-app checkAndRemind() gate in
+    // the same file), so the phone push and the browser tab reminder both
     // start at the same hour.
     //
-    // END (2026-07-22 — was 18, matching app-constants.js exactly): widened
+    // END (2026-07-22 — was 18, matching common.js exactly): widened
     // to 19 as a 1-hour grace buffer, intentionally diverging from
-    // app-constants.js's REMINDER_HOUR_END, which stays 18. Reason: GitHub
+    // common.js's REMINDER_HOUR_END, which stays 18. Reason: GitHub
     // Actions scheduled cron is best-effort, not guaranteed on-time — an
     // observed run scheduled for a slot within UTC hours 3-11 actually
     // executed at 12:58 UTC (18:58 Dhaka) and was silently dropped by the
     // old END=18 gate, even though the reminder was legitimately due. The
-    // browser-side in-app reminder (app-reminder.js) is unaffected by this
+    // browser-side in-app reminder (common.js) is unaffected by this
     // change and correctly keeps stopping at 18:00, since that gate only
     // matters while a tab is open; this gate is what matters when the
     // browser is closed, which is exactly when the grace buffer is needed.
@@ -157,6 +157,7 @@ const HOUR_SCHEDULE = {
             tag: 'advance-payment', icon: '💰', title: 'অগ্রিম পরিশোধ',
             body: 'অগ্রিম পরিশোধ রেকর্ড পর্যালোচনা করুন।',
             countLabel: 'টি সক্রিয় রেকর্ড', collection: 'advance_payments', countField: null,
+            statusFilter: { field: 'is_archived', value: false },
         },
         {
             tag: 'manpower', icon: '👥', title: 'জনবল ব্যবস্থাপনা',
@@ -188,7 +189,7 @@ const HOUR_SCHEDULE = {
         {
             tag: 'vat-tax', icon: '🧾', title: 'ভ্যাট-ট্যাক্স হিসাব',
             body: 'ভ্যাট ও ট্যাক্স হিসাব পর্যালোচনা করুন।',
-            countLabel: 'টি পেমেন্ট রেকর্ড', collection: 'vatPayments',
+            countLabel: 'টি পেমেন্ট রেকর্ড', collection: 'vat_payments',
             orderByField: 'created_at', countField: null,
         },
 
@@ -210,11 +211,12 @@ const HOUR_SCHEDULE = {
             tag: 'office-issue', icon: '🆕', title: 'অফিস সমস্যা ও সমাধান',
             body: 'অফিসের সমস্যা সমাধান তালিকা দেখুন।',
             countLabel: 'টি অমীমাংসিত সমস্যা', collection: 'office_issues',
+            statusFilter: { field: 'status', value: 'pending' },
         },
         {
             tag: 'notesheet', icon: '📋', title: 'নোটশীট',
             body: 'নোটশীট রিপোর্ট পর্যালোচনা করুন।',
-            countLabel: 'টি সক্রিয় নোটশীট', collection: 'notesheetReports', countField: null,
+            countLabel: 'টি সক্রিয় নোটশীট', collection: 'notesheet_reports', countField: null,
         },
     ],
 
@@ -249,7 +251,7 @@ const HOUR_SCHEDULE = {
         {
             tag: 'medical-bill', icon: '🏥', title: 'মেডিকেল বিল পরিশোধ',
             body: 'মেডিকেল বিল পরিশোধ আর্কাইভ পর্যালোচনা করুন।',
-            countLabel: 'টি রেকর্ড', collection: 'archives_medical_bills_reports', countField: null,
+            countLabel: 'টি রেকর্ড', collection: 'medical_bill_archives', orderByField: 'archived_at', countField: null,
         },
     ],
 
@@ -268,7 +270,7 @@ const HOUR_SCHEDULE = {
             tag: 'premium-submit', icon: '✅', title: 'প্রিমিয়াম জমা',
             body: 'প্রিমিয়াম জমার রেকর্ড পর্যালোচনা করুন।',
             countLabel: 'টি প্রিমিয়াম এন্ট্রি',
-            collection: 'accounts', extraCollections: ['accounts_archive_1st_year'], countField: null,
+            collection: 'premium_accounts', orderByField: 'created_at', countField: null,
         },
     ],
 
@@ -304,7 +306,7 @@ const HOUR_SCHEDULE = {
         {
             tag: 'fpr-register', icon: '📒', title: 'এফপিআর রেজিস্টার',
             body: 'FPR রেজিস্টার পর্যালোচনা করুন।',
-            countLabel: 'টি FPR এন্ট্রি', collection: 'fprEntries', countField: null,
+            countLabel: 'টি FPR এন্ট্রি', collection: 'fpr_entries', countField: null,
         },
         {
             tag: 'license-archive', icon: '🗃️', title: 'লাইসেন্স ফরোয়ার্ডিং আর্কাইভ',
@@ -607,7 +609,7 @@ async function checkTaskReminderCooldown(uid, statusKey) {
         // (e.g. Redmi), which never got anything either way. Per explicit
         // request, the OS-push cooldown is now independent: it only looks
         // at push_state.snoozed, the server's own send record. The in-app
-        // poll (app-reminder.js checkAndRemind) keeps its own separate
+        // poll (common.js checkAndRemind) keeps its own separate
         // cooldown via reminder_state, unaffected by this. Tradeoff accepted:
         // a device with an open tab can now receive both an in-app alert and
         // an OS push for the same pending task within the same window.
@@ -665,7 +667,7 @@ async function markTaskReminderCooldown(uid) {
     // (the client's in-app cooldown table) — see checkTaskReminderCooldown
     // above for why. The OS-push cooldown lives entirely in push_state now;
     // the in-app poll's own cooldown (reminder_state, written by
-    // app-reminder.js / app-backend.js's saveReminderState) is completely
+    // common.js's saveReminderState) is completely
     // independent and untouched by this function.
 }
 
@@ -677,9 +679,9 @@ async function markTaskReminderCooldown(uid) {
 //           AND timestamp >= (now - 2min)
 // FIX (2026-07-19): was querying a non-existent 'tag' column with value
 // 'task-manager'. The notifications table has no 'tag' column — per the
-// icon-overloading scheme documented in app-notifications.js, task-reminder
+// icon-overloading scheme documented in common.js, task-reminder
 // rows (client poll and this cron) store the emoji '⏰' in `icon`, while
-// 'task-manager' is only used as an icon value by notify.js module alerts.
+// 'task-manager' is only used as an icon value by common.js module alerts.
 // ══════════════════════════════════════════════════════════════
 
 async function markTaskNotificationsAsPushed(uid) {
@@ -892,7 +894,7 @@ const _PREVIEW_FIELDS = {
     'help':               ['title', 'description'],
     'help-requisition':   ['name', 'itemName'],
     'proposal-index':     ['name', 'proposalNo'],
-    'fpr-register':       ['propName', 'name'],
+    'fpr-register':       ['propName', 'prop_name', 'name'],
     'license-archive':    ['dateCreated', 'totalAgents'],
 };
 
@@ -917,7 +919,7 @@ function _docPreviewLine(docData, moduleTag) {
             .filter(Boolean).join(' ') || null)?.slice(0, 40) ?? null;
     }
     if (moduleTag === 'premium-submit') {
-        const type = docData.typeDisplay || docData.type || '';
+        const type = docData.typeDisplay || docData.type_display || docData.type || '';
         const dep  = docData.deposit != null ? `৳${docData.deposit}` : (docData.amount != null ? `৳${docData.amount}` : '');
         return ([type, dep].filter(Boolean).join(' ') || null)?.slice(0, 40) ?? null;
     }
@@ -1083,7 +1085,7 @@ async function sendWebPushWithRetry(subscription, payload, maxAttempts = CONFIG.
             // being flagged for cleanup. This is not transient: retrying can never
             // succeed, since the mismatch is permanent until the browser creates a
             // brand-new subscription with the current key (see
-            // window.__refreshPushSubscription() in app-push.js). Detect this
+            // window.__refreshPushSubscription() in common.js). Detect this
             // specific 403 body and treat it the same as an expired subscription —
             // no further retries, and it's queued for deletion via
             // cleanupExpiredSubscriptions() like 410/404 already are.
@@ -1143,6 +1145,7 @@ async function cleanupExpiredSubscriptions(uid, expiredEndpoints) {
 // Now:      DELETE FROM push_state WHERE uid = ANY($1)
 // ══════════════════════════════════════════════════════════════
 
+// NOTE (SP-C6): this deletes the whole push_state row of each user, so a manual run also clears today's snoozes and the task-reminder cooldown stamp (_taskReminder30LastSent); the next 15-minute tick can then send a task reminder at once.
 async function resetSeenTodayForAllUsers(uids) {
     let reset = 0;
     for (const uid of uids) {
@@ -1272,6 +1275,7 @@ async function getUserSubscriptions(uid) {
         }
 
         const valid = [];
+        const seenEndpoints = new Set();
 
         for (const s of all) {
             if (s.device_uuid && disabledUuids.has(s.device_uuid)) {
@@ -1282,7 +1286,7 @@ async function getUserSubscriptions(uid) {
                 logger.warn('Subscription missing endpoint — skipping', { uid, id: s.id });
                 continue;
             }
-            // app-backend.js saves keys as flat columns (p256dh, auth_key) rather than
+            // common.js saves keys as flat columns (p256dh, auth_key) rather than
             // a nested JSONB `keys` object. Support both layouts so this worker works
             // with the current schema and any future migration to a JSONB `keys` column.
             const p256dh  = s.keys?.p256dh || s.p256dh   || null;
@@ -1298,6 +1302,12 @@ async function getUserSubscriptions(uid) {
                 });
                 continue;
             }
+            // Two rows with the same endpoint are the same browser: send once.
+            if (seenEndpoints.has(s.endpoint)) {
+                logger.info('Duplicate subscription endpoint — skipping', { uid, id: s.id, device: s.device_name });
+                continue;
+            }
+            seenEndpoints.add(s.endpoint);
             // Reconstruct the shape web-push expects: { endpoint, keys: { p256dh, auth } }
             valid.push({
                 endpoint:   s.endpoint,
@@ -1406,7 +1416,7 @@ async function sendTaskReminderToUser(uid, today, subscriptions, { cooldownMode 
         // FIX (2026-07-18): previously only tasks due today or earlier
         // (taskDate <= today) counted as "pending" here — a task due in
         // the future stayed silent until its due date arrived. This
-        // mismatched app-backend.js's getPendingTasks(), which was already
+        // mismatched common.js's getPendingTasks(), which was already
         // changed on 2026-07-15 (ALERT-FOR-ANY-DATE) to count ANY non-done
         // task regardless of due date. That mismatch is why the in-app
         // login reminder fired for a future-dated task while this OS-push
@@ -1488,7 +1498,7 @@ async function sendTaskReminderToUser(uid, today, subscriptions, { cooldownMode 
                 // cron tick that fired while the app was closed/offline left no
                 // trace in the bell, producing visible gaps until the next time
                 // the app was opened. Insert the same shape of row the client
-                // writes (AppDB.sendReminderNotification / notify.js) so each
+                // writes (AppDB.sendReminderNotification / window.Notify in common.js) so each
                 // successful cron push is also represented in the bell log.
                 try {
                     // FIX (2026-07-18): bell body now lists every pending task
@@ -1618,6 +1628,13 @@ async function processUserAtHour(uid, dhakaHour, today) {
     return stats;
 }
 
+// SP-B1: a run that sent nothing and had real errors must end red, so the failure mail is sent.
+// Errors caused by expired subscriptions (410/404, VAPID mismatch) do not count: they are cleaned up
+// and would otherwise alert on every 15-minute tick until the cleanup runs.
+function isTotalPushFailure(pushed, errors, expiredCount) {
+    return pushed === 0 && errors > 0 && expiredCount === 0;
+}
+
 // ══════════════════════════════════════════════════════════════
 // MAIN WORKER
 // Replaces: the old database users collection .select().get()
@@ -1681,6 +1698,11 @@ async function runPushWorker() {
 
         const result = await sendTaskReminderToUser(ADMIN_UID, today, subscriptions, { cooldownMode: true });
         logger.info('⏰ Standalone task-reminder tick finished', result);
+        // SP-C9: remove subscriptions that answered 410/404 so the tick does not retry them every time
+        await cleanupExpiredSubscriptions(ADMIN_UID, result.expiredEndpoints);
+        if (isTotalPushFailure(result.pushed, result.errors, result.expiredEndpoints.length)) {
+            return { success: false, error: 'Task-reminder tick sent nothing and had errors', stats: result, duration: Date.now() - startTime };
+        }
         return { success: true, stats: result, duration: Date.now() - startTime };
     }
 
@@ -1710,7 +1732,7 @@ async function runPushWorker() {
     const globalStats = { usersProcessed: 0, usersFailed: 0, pushSent: 0, pushSkipped: 0, errors: 0, subscriptionsCleaned: 0 };
 
     // ── Target admin only (include-list, not exclude-list) ────
-    // Module-reminder pushes (task/payment/etc., the same tags notify.js
+    // Module-reminder pushes (task/payment/etc., the same tags common.js
     // maps to page notifications) are admin-only. Staff still receive
     // call pushes (send-call-push) and chat pushes (send-chat-push) —
     // those are separate functions/tables and are untouched by this.
@@ -1777,6 +1799,9 @@ async function runPushWorker() {
         durationSec: Math.round(duration / 1000), slots: slotsToRun,
     });
 
+    if (isTotalPushFailure(globalStats.pushSent, globalStats.errors, allExpiredEndpoints.size)) {
+        return { success: false, error: 'No push was sent and the run had errors', stats: globalStats, duration };
+    }
     return { success: true, stats: globalStats, duration };
 }
 
