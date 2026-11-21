@@ -110,7 +110,7 @@ jobs:
           password:       ${{ secrets.GMAIL_APP_PASSWORD }}
           subject:        '❌ Email Digest Failed — Run #${{ github.run_number }} (${{ steps.page.outputs.PAGE }})'
           to:             ${{ secrets.FAILURE_NOTIFY_EMAIL || 'noreply@example.com' }}
-          from:           'github-actions@officemanagement.app'
+          from:           'github-actions[bot]@users.noreply.github.com'
           body: |
             The email digest workflow failed.
 
