@@ -256,6 +256,10 @@ jobs:
       # ── Step 7: Generate job summary ──────────────────────────
       - name: Generate job summary
         if: always()
+        env:
+          INPUT_FORCE_SEND:       ${{ github.event.inputs.force_send || 'false' }}
+          INPUT_DRY_RUN:          ${{ github.event.inputs.dry_run || 'false' }}
+          INPUT_RESET_SEEN_TODAY: ${{ github.event.inputs.reset_seen_today || 'auto' }}
         run: |
           utc_hour=$(date -u +%H | sed 's/^0//')
           dhaka_hour=$(( (utc_hour + 6) % 24 ))
@@ -271,9 +275,9 @@ jobs:
           echo "| Trigger | ${{ github.event_name }} |"        >> $GITHUB_STEP_SUMMARY
           echo "| Actor | ${{ github.actor }} |"               >> $GITHUB_STEP_SUMMARY
           echo "| Timestamp | $(date -u +'%Y-%m-%d %H:%M UTC') |" >> $GITHUB_STEP_SUMMARY
-          echo "| Force send | ${{ github.event.inputs.force_send || 'false' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Dry run | ${{ github.event.inputs.dry_run || 'false' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Reset seen-today | ${{ github.event.inputs.reset_seen_today || 'auto' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Force send | $INPUT_FORCE_SEND |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dry run | $INPUT_DRY_RUN |" >> $GITHUB_STEP_SUMMARY
+          echo "| Reset seen-today | $INPUT_RESET_SEEN_TODAY |" >> $GITHUB_STEP_SUMMARY
           echo ""                                               >> $GITHUB_STEP_SUMMARY
 
           echo "## Time and slot"                              >> $GITHUB_STEP_SUMMARY
@@ -374,7 +378,7 @@ jobs:
           password:       ${{ secrets.GMAIL_APP_PASSWORD }}
           subject:        '❌ Web Push Workflow Failed — Run #${{ github.run_number }} (${{ steps.dhaka_time.outputs.slot_name }})'
           to:             ${{ secrets.FAILURE_NOTIFY_EMAIL || 'noreply@example.com' }}
-          from:           'github-actions@officemanagement.app'
+          from:           'github-actions[bot]@users.noreply.github.com'
           body: |
             Web Push Notification workflow failed.
 
