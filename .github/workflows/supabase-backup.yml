@@ -98,6 +98,119 @@ jobs:
           path: supabase_backup_*.sql.gpg
           retention-days: 90
 
+      # ------------------------------------------------------------
+      # Storage files backup (audit Part 4C).
+      # Placed AFTER the database artifact upload on purpose: a failure
+      # in these steps can never stop the database backup from being
+      # saved (the failure email below still fires).
+      # Scheduled runs copy storage only on Sundays (UTC) to stay inside
+      # the Supabase Free plan egress quota (5 GB per month; every storage
+      # copy downloads about 290 MB). A manual run (workflow_dispatch)
+      # always copies storage.
+      # Needs the GitHub secrets: STORAGE_S3_ACCESS_KEY_ID,
+      # STORAGE_S3_SECRET_ACCESS_KEY, STORAGE_S3_ENDPOINT (plus the
+      # existing BACKUP_PASSPHRASE). The S3 key can read AND delete, so it
+      # must live only in GitHub Secrets. Public repo: this log is public,
+      # so only bucket names and counts are printed, never object names.
+      # ------------------------------------------------------------
+      - name: Decide whether to back up storage files this run
+        id: storage_gate
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] || [ "$(date -u +%u)" = "7" ]; then
+            echo "run_storage=true" >> "$GITHUB_OUTPUT"
+            echo "Storage backup will run in this run."
+          else
+            echo "run_storage=false" >> "$GITHUB_OUTPUT"
+            echo "Storage backup skipped in this run (it runs on Sundays UTC and on manual runs)."
+          fi
+
+      - name: Download storage files (all buckets, read-only copy)
+        if: steps.storage_gate.outputs.run_storage == 'true'
+        timeout-minutes: 15
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.STORAGE_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.STORAGE_S3_SECRET_ACCESS_KEY }}
+          S3_ENDPOINT: ${{ secrets.STORAGE_S3_ENDPOINT }}
+          AWS_DEFAULT_REGION: ap-southeast-1
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+        run: |
+          set -euo pipefail
+          for v in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY S3_ENDPOINT; do
+            if [ -z "${!v}" ]; then
+              echo "::error::A storage backup secret is missing (STORAGE_S3_ACCESS_KEY_ID, STORAGE_S3_SECRET_ACCESS_KEY or STORAGE_S3_ENDPOINT). Add it at: repo → Settings → Secrets and variables → Actions"
+              exit 1
+            fi
+          done
+          if ! command -v aws > /dev/null; then
+            echo "::error::The AWS CLI is not available on this runner."
+            exit 1
+          fi
+          aws --version
+          aws configure set default.s3.addressing_style path
+          mkdir -p storage_backup
+          buckets=$(aws s3api list-buckets --endpoint-url "$S3_ENDPOINT" --query 'Buckets[].Name' --output text)
+          if [ -z "$buckets" ]; then
+            echo "::error::The storage service returned no buckets."
+            exit 1
+          fi
+          expected=0
+          for b in $buckets; do
+            n=$(aws s3api list-objects-v2 --bucket "$b" --endpoint-url "$S3_ENDPOINT" \
+              --query "length(Contents[?!ends_with(Key, '/')] || \`[]\`)" --output text \
+              | awk '{ s += $1 } END { print s + 0 }')
+            echo "Bucket $b: $n objects listed"
+            expected=$((expected + n))
+            aws s3 sync "s3://$b" "storage_backup/$b" --endpoint-url "$S3_ENDPOINT" --only-show-errors
+          done
+          downloaded=$(find storage_backup -type f -printf '.' | wc -c)
+          echo "Objects listed: $expected; files downloaded: $downloaded"
+          if [ "$expected" -lt 1 ]; then
+            echo "::error::No storage objects were listed. Not uploading."
+            exit 1
+          fi
+          # Objects added during the run may make the download larger; fewer files than listed is an error.
+          if [ "$downloaded" -lt "$expected" ]; then
+            echo "::error::Only $downloaded of $expected listed objects were downloaded. Not uploading."
+            exit 1
+          fi
+          echo "STORAGE_FILE_COUNT=$downloaded" >> "$GITHUB_ENV"
+
+      - name: Archive and encrypt storage files (AES-256, passphrase from secret)
+        if: steps.storage_gate.outputs.run_storage == 'true'
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "::error::Secret BACKUP_PASSPHRASE is not set. Add it at: repo → Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+          out="supabase_storage_backup_$(date +%Y-%m-%d_%H-%M-%S).tar.gpg"
+          tar -cf storage_backup.tar -C storage_backup .
+          printf '%s' "$BACKUP_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback \
+            --passphrase-fd 0 --symmetric --cipher-algo AES256 -z 0 -o "$out" storage_backup.tar
+          # restore check: the file must decrypt and hold the same number of files that were downloaded
+          listed=$(printf '%s' "$BACKUP_PASSPHRASE" | gpg --batch --pinentry-mode loopback \
+            --passphrase-fd 0 --decrypt "$out" 2>/dev/null | tar -tf - | grep -vc '/$' || true)
+          if [ "$listed" != "$STORAGE_FILE_COUNT" ]; then
+            echo "::error::Encrypted storage backup failed the decrypt check (found '$listed' files, expected '$STORAGE_FILE_COUNT')"
+            exit 1
+          fi
+          rm -rf storage_backup storage_backup.tar
+          ls -lh supabase_storage_backup_*.tar.gpg
+
+      - name: Upload storage backup as a workflow artifact
+        if: steps.storage_gate.outputs.run_storage == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: supabase-storage-backup-${{ github.run_id }}
+          path: supabase_storage_backup_*.tar.gpg
+          retention-days: 90
+          compression-level: 0
+
       - name: Send email notification on failure
         if: failure()
         uses: dawidd6/action-send-mail@v3
