@@ -92,7 +92,7 @@ jobs:
           ls -lh supabase_backup_*.sql.gpg
 
       - name: Upload backup as a workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: supabase-backup-${{ github.run_id }}
           path: supabase_backup_*.sql.gpg
@@ -204,7 +204,7 @@ jobs:
 
       - name: Upload storage backup as a workflow artifact
         if: steps.storage_gate.outputs.run_storage == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: supabase-storage-backup-${{ github.run_id }}
           path: supabase_storage_backup_*.tar.gpg
