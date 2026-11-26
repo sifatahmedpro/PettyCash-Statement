@@ -179,7 +179,7 @@ const HOUR_SCHEDULE = {
         {
             tag: 'fund-archive', icon: '🏦', title: 'ফান্ড ব্যবস্থাপনা',
             body: 'ফান্ড আর্কাইভ রেকর্ড পর্যালোচনা করুন।',
-            countLabel: 'টি ফান্ড এন্ট্রি', collection: 'logs', orderByField: 'created_at',
+            countLabel: 'টি ফান্ড এন্ট্রি', collection: 'fund_logs', orderByField: 'created_at',
         },
         {
             tag: 'hbl-recovery', icon: '🏧', title: 'গৃহ ঋণ পরিশোধ',
