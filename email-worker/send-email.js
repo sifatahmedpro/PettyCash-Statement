@@ -406,7 +406,7 @@ ${FONT_IMPORT}
   <!-- HEADER -->
   <tr>
     <td style="background:linear-gradient(135deg,${headerAccent} 0%,${headerAccent2} 100%);padding:0">
-      <div style="height:4px;background:linear-gradient(90deg,#FFC400,#FFE066,#FFC400)"></div>
+      <div style="height:4px;background:linear-gradient(90deg,#251577,#FFE066,#251577)"></div>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
         <tr>
           <td style="padding:18px 28px 10px">
